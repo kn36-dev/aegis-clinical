@@ -1,0 +1,34 @@
+[project]
+name = "aegis-clinical"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "crewai>=1.14.7",
+    "fastapi>=0.136.3",
+    "langgraph>=1.2.5",
+    "pydantic-ai>=1.31.0",
+    "uvicorn>=0.49.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.21,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.155.2",
+    "mypy>=2.1.0",
+    "pytest>=9.0.3",
+    "ruff>=0.15.17",
+]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "B", "ASYNC", "TCH"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+exclude = ["frontend/"]
