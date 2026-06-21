@@ -38,5 +38,8 @@ exclude = ["frontend/"]
 [tool.pyright]
 extraPaths = ["src"]
 
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+
 [tool.uv]
 package = false

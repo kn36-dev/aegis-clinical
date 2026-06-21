@@ -10,9 +10,10 @@ class AppSettings(BaseSettings):
     """
 
     ENVIRONMENT: str = Field(default="development")
-    GROQ_API_KEY: SecretStr  # Enforces value presence and masks logging output
-    UPSTASH_VECTOR_REST_URL: HttpUrl
-    UPSTASH_VECTOR_REST_TOKEN: SecretStr
+    # Enforces value presence and masks logging output
+    GROQ_API_KEY: SecretStr = Field(default=...)
+    UPSTASH_VECTOR_REST_URL: HttpUrl = Field(default=...)
+    UPSTASH_VECTOR_REST_TOKEN: SecretStr = Field(default=...)
 
     # Local SQLite paths defined in your architecture map
     CLINICAL_DB_PATH: str = "data/clinical_registry.db"
