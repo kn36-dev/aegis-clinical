@@ -1,0 +1,25 @@
+# Set the default behavior to force LF on checkout and commit for all text files
+* text=auto eol=lf
+
+# Explicitly guarantee code files use LF regardless of OS or GUI client
+*.py text eol=lf
+*.toml text eol=lf
+*.md text eol=lf
+Makefile text eol=lf
+
+# Frontend web file specifications
+*.js text eol=lf
+*.ts text eol=lf
+*.jsx text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+
+# Strict binary declarations (Git must never touch or normalize these)
+*.db binary
+*.db-shm binary
+*.db-wal binary
+*.sqlite3 binary
+*.png binary
+*.jpg binary

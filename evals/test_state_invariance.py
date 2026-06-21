@@ -1,4 +1,4 @@
-# scripts/verify_topology.py
+# evals/test_state_invariance.py
 import asyncio
 import uuid
 from typing import TYPE_CHECKING

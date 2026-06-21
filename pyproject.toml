@@ -30,6 +30,9 @@ dev = [
 line-length = 100
 select = ["E", "F", "B", "ASYNC", "TCH"]
 
+[tool.ruff.format]
+line-ending = "lf"
+
 [tool.mypy]
 strict = true
 ignore_missing_imports = true
@@ -42,4 +45,7 @@ extraPaths = ["src"]
 pythonpath = ["src"]
 
 [tool.uv]
-package = false
+package = true
+
+[tool.uv.build-backend]
+module-name = "aegis"

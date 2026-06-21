@@ -2,7 +2,7 @@
 
 # Run the FastAPI server on our unexcluded port
 dev-backend:
-	uv run uvicorn src.aegis.api.main:app --reload --host 0.0.0.0 --port 9000
+	uv run uvicorn aegis.api.main:app --app-dir src --reload --host 0.0.0.0 --port 9000
 
 # Run your React frontend (Assuming it sits in a 'frontend' subfolder)
 dev-frontend:

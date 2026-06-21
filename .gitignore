@@ -13,6 +13,8 @@ __pycache__/
 .ruff_cache/
 
 data/*.db
+data/*.db-shm
+data/*.db-wal
 data/*.sqlite3
 
 frontend/node_modules/
