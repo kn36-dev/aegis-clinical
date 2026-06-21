@@ -4,6 +4,9 @@
 
 !.env.example
 
+# My own project journal
+.memory/
+
 .venv/
 __pycache__/
 *.py[cod]

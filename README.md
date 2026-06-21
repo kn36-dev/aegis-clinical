@@ -22,6 +22,8 @@ Unlike naive agent frameworks that suffer from execution drift, `aegis-clinical`
 
 * **Runtime:** Python 3.13+ managed deterministically via [`uv`](https://github.com/astral-sh/uv).
 * **Framework Layer:** LangGraph (State management & checkpointers), PydanticAI (Type-safe LLM boundaries), CrewAI (Dynamic agent worker pools).
+* **Observability & Evaluation:** OpenTelemetry for distributed tracing and core telemetry collection; BrainTrust for production-grade evaluation and regression tracking.
+* **Storage & Persistence:** SQLite configured for transactional checkpointing; Redis for distributed state cache and consistency management.
 * **Quality Assurance & Lints:** `ruff` enforcing strict enterprise formatting and security profiles (`E`, `F`, `B`, `ASYNC`, `TCH`). `mypy` running with `strict = true`.
 * **Evaluation & Testing:** `pytest` paired with custom LLM-as-a-judge evaluation frameworks to systematically score extraction precision, recall, and state transition invariance.
 
@@ -65,21 +67,20 @@ aegis_clinical/
 
 ### 1. `aegis.graphs` (Deterministic State Charts)
 * **Sequence Alignment Enforcement:** Builds a LangGraph topology that maps the entire trial matching lifecycle. Implements conditional edges that strictly verify node success flags, entirely preventing downstream evaluation if prior stages (such as anonymization) fail or time out.
+* **Phase 5 Clinical Review Checkpoints:** Uses LangGraph `interrupt_before` mechanics to freeze execution before moving into clinical matching confirmation, requiring affirmative human sign-off.
+* **CrewAI Fault Isolation:** Traps inner agent failures and processes worker runtime exceptions cleanly, transitioning the graph execution explicitly into a `FAILED` state instead of causing macro-graph hanging or thread deadlocks.
 * **State Checkpointing:** Employs persistent, transaction-aware memory checkpointers allowing concurrent execution threads to save state at every step, protecting against system failures mid-trial.
 
 ### 2. `aegis.schemas` (Type-Safe Edge Guarding)
 * **Defensive PydanticAI Layer:** Enforces strongly typed schemas on unstructured text generation. Uses Python type hints and model validators to inspect raw LLM outputs, converting them into structured objects while stripping away unvalidated escapes, hanging control characters, or malicious prompt injections.
+* **Negation Semantic Validation Guard:** Intercepts LLM extraction arrays to explicitly protect against semantic inversion. The guard acts as a high-fidelity logical validation gate ensuring clinical assertions (e.g., "no diabetes") cannot be corrupted or falsely transformed into an active diagnosis flag (e.g., "diabetes present").
 * **PII Anonymization Pipeline:** A high-throughput scrubbing module that identifies and masks protected health information (PHI) before any text payload reaches an external LLM provider.
-
-### 3. `aegis.agents` (Concurrent Taxonomy Mapping)
-* **Colloquial-to-ICD-11 Conversion:** Orchestrates a CrewAI worker pool that takes ambiguous, patient-written statements and matches them with exact, hierarchically correct international classification numbers.
-* **Concurrent Tool Execution:** Agents utilize asynchronous external tools to hit validation registries concurrently, enriching the state context without blocking execution loops.
 
 ### 4. `aegis.hitl` (Asynchronous Physician Sign-Off)
 * **Interrupt and Resume Subsystem:** Implements state-level pausing. When a patient-to-trial match score crosses safety thresholds, the engine securely freezes the execution path, generates an immutable resume token, and registers an alert for a physician.
+* **Optimistic Locking & State Versioning:** Enforces strict data concurrency via state version tokens. The system compares incoming interaction payloads against current DB versioning snapshots, systematically rejecting stale updates when versions differ.
+* **Stale Update Handling & Token Expiration:** Manages token expiration handling during exceptionally long-running review workflows. If an expired or out-of-date token submission occurs, the router rejects the update, returns an HTTP `409 Conflict` response, and mandates an absolute client-side UI refresh.
 * **State Hydration:** Re-hydrates and resumes processing threads identically from the exact point of interruption upon receiving a cryptographic signature from a qualified reviewer.
-
----
 
 ## 🧪 "Proof of Competence" Evaluation Framework
 
@@ -89,10 +90,21 @@ Medical AI systems demand empirical verification. `aegis-clinical` treats evalua
 | :--- | :--- | :--- |
 | **State Chart Determinism** | Path Invariance | Running 1,000 randomized parallel execution requests simulating sudden tool errors, rate-limiting, and bad payloads. LangGraph must prove **100% path compliance**—zero illegal node transitions or state leaks. |
 | **Schema Integrity** | Adversarial Boundary Fuzzing | Injecting malicious, broken, or deeply nested adversarial strings into the PydanticAI boundary via `Hypothesis`. The validation layers must prove **100% catchment/rejection** of harmful inputs, never passing a corrupted primitive downstream. |
+| **Semantic Inversion Guard** | Negation Reversal Prevention | Asserting deterministic semantic invariants via a targeted test suite. The system must maintain a **0% leak rate** on inverted negation expressions (e.g., proving "no diabetes" never converts to true). |
 | **Clinical Taxonomy Accuracy** | ICD-11 Alignment Precision | Evaluating the system against a gold-standard cohort of 500 synthetic patient cases. The CrewAI parsing network must demonstrate an **ICD-11 extraction F1-score of $\ge 0.94$**, backed by live verification reports in the testing console. |
 | **HITL Persistence** | Token Stability Under Load | Inducing a system-wide restart while 100 threads are actively suspended at a physician sign-off step. The system must prove **100% recovery fidelity**, resuming each thread from its checkpoint token without memory leaks or data loss. |
+| **Concurrency Safeguards** | Optimistic Conflict Resolution | Injecting race-condition updates with mismatched version tokens. The engine must maintain **100% precise rejections**, returning an HTTP `409 Conflict` code across all parallel collisions. |
+| **Continuous Regression Tracking** | BrainTrust Platform Validation | Running automated evaluation workflows integrated with BrainTrust to visualize precision shifts, tracking score histories over time to capture and prevent model behavior regressions. |
 
----
+## 🚀 Production-Grade CI/CD Pipeline Gates
+
+The system relies on an automated, zero-trust integration workflow defined in `.github/workflows/` to guard main branch purity. Code changes are barred from deployment unless they successfully satisfy five structural gates:
+
+1. **Static Analysis & Formatting Rules:** Continuous execution of `ruff check .` to enforce programmatic formatting, clean async practices, and strict type placement.
+2. **Strict Type-Safety Verification:** Complete verification of codebase dependencies via `mypy src/` enforcing `strict = true` compliance across all operational components.
+3. **Core Functional Verification:** Execution of standard unit and integration test sweeps via `pytest tests/` to confirm basic logic, error traps, and network routing boundaries.
+4. **Automated AI Performance Evaluation:** Systematic execution of the `evals/` cohort inside specialized CI runners, automatically pushing telemetry traces to BrainTrust and OpenTelemetry collectors. Any performance drop below established thresholds flags an instant deployment block.
+5. **Continuous Deployment Gateways:** Automated deployment tasks are unlocked only when code quality validation metrics, security linting, and LLM-as-a-judge accuracy benchmarks are successfully met.
 
 ## ⚡ Setup & Execution
 
@@ -120,3 +132,8 @@ uv run pytest tests/
 ```bash
 uv run pytest evals/ -v --tb=short
 ```
+
+### 5. Distributed Consistency & System Reliability
+* **High-Performance Storage Configuration:** Optimizes the embedded persistence tier using SQLite Write-Ahead Logging (`journal_mode=WAL` and `synchronous=NORMAL`) to assure scalable, parallel read/write capabilities under production thread pressures.
+* **Dual-Write Concurrency & Transactional Integrity:** Leverages native `asyncio.gather()` configurations to achieve non-blocking, simultaneous updates across downstream nodes.
+* **Eventual Consistency Architecture:** Synchronizes concurrent Redis cache additions and Vector database indexes by implementing structured Saga, Outbox, or compensating-transaction design patterns, mathematically assuring complete eventual consistency across isolated storage engines.
