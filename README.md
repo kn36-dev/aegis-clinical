@@ -137,3 +137,7 @@ uv run pytest evals/ -v --tb=short
 * **High-Performance Storage Configuration:** Optimizes the embedded persistence tier using SQLite Write-Ahead Logging (`journal_mode=WAL` and `synchronous=NORMAL`) to assure scalable, parallel read/write capabilities under production thread pressures.
 * **Dual-Write Concurrency & Transactional Integrity:** Leverages native `asyncio.gather()` configurations to achieve non-blocking, simultaneous updates across downstream nodes.
 * **Eventual Consistency Architecture:** Synchronizes concurrent Redis cache additions and Vector database indexes by implementing structured Saga, Outbox, or compensating-transaction design patterns, mathematically assuring complete eventual consistency across isolated storage engines.
+
+
+The system will be cheaper overtime with 
+`Deterministic Hash → Vector Proximity → Agentic LLM` flows defined in clinical_note_ingestion_flow.md

@@ -1,0 +1,72 @@
+[
+  {
+    "patient_id": "pat_9a8b7c6d",
+    "medical_record_number": "MRN-2026-0001",
+    "first_name": "James",
+    "last_name": "Smith",
+    "date_of_birth": "1978-04-12"
+  },
+  {
+    "patient_id": "pat_1e2f3g4h",
+    "medical_record_number": "MRN-2026-0002",
+    "first_name": "Maria",
+    "last_name": "Rodriguez",
+    "date_of_birth": "1985-11-23"
+  },
+  {
+    "patient_id": "pat_5i6j7k8l",
+    "medical_record_number": "MRN-2026-0003",
+    "first_name": "David",
+    "last_name": "Kim",
+    "date_of_birth": "1992-07-03"
+  },
+  {
+    "patient_id": "pat_9m0n1o2p",
+    "medical_record_number": "MRN-2026-0004",
+    "first_name": "Sarah",
+    "last_name": "Jenkins",
+    "date_of_birth": "1964-01-30"
+  },
+  {
+    "patient_id": "pat_3q4r5s6t",
+    "medical_record_number": "MRN-2026-0005",
+    "first_name": "Michael",
+    "last_name": "Brown",
+    "date_of_birth": "2001-09-15"
+  },
+  {
+    "patient_id": "pat_7u8v9w0x",
+    "medical_record_number": "MRN-2026-0006",
+    "first_name": "Amina",
+    "last_name": "Diop",
+    "date_of_birth": "1989-05-18"
+  },
+  {
+    "patient_id": "pat_1y2z3a4b",
+    "medical_record_number": "MRN-2026-0007",
+    "first_name": "Elena",
+    "last_name": "Petrova",
+    "date_of_birth": "1973-12-05"
+  },
+  {
+    "patient_id": "pat_5c6d7e8f",
+    "medical_record_number": "MRN-2026-0008",
+    "first_name": "Marcus",
+    "last_name": "Vance",
+    "date_of_birth": "1995-02-28"
+  },
+  {
+    "patient_id": "pat_9g0h1i2j",
+    "medical_record_number": "MRN-2026-0009",
+    "first_name": "Yuki",
+    "last_name": "Tanaka",
+    "date_of_birth": "2010-08-14"
+  },
+  {
+    "patient_id": "pat_3k4l5m6n",
+    "medical_record_number": "MRN-2026-0010",
+    "first_name": "Carlos",
+    "last_name": "Mendez",
+    "date_of_birth": "1958-06-21"
+  }
+]

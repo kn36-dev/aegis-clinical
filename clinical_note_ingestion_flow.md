@@ -36,7 +36,7 @@ The system utilizes a decoupled, stateful graph topology (orchestrated via **Lan
 *Objective: Intercept incoming requests to achieve sub-millisecond execution times and absolute token elimination via a tiered, deterministic/semantic cache approach.*
 
 * **Step 2.1: Fast-Path Token Normalization & Deterministic Hashing**
-    * **Mechanism:** Take the `Anonymized Clinical Note`, apply aggressive programmatic normalization (lowercase, strip whitespaces, strip punctuation, remove standard stop-words), and sort the remaining unique tokens alphabetically. Run a SHA-256 cryptographic hash on this mangled token string.
+    * **Mechanism:** Take the `Anonymized Clinical Note`, apply aggressive programmatic normalization (lowercase, strip whitespaces, strip punctuation, remove standard stop-words), and sort the remaining unique tokens alphabetically. Run a SHA-256 cryptographic hash on this mangled token string. When normalization happens, it should do what's available in src/aegis/schemas/normalization.py
 * **Step 2.2: Tier 1 Cache Lookup (Upstash Redis)**
     * **Mechanism:** Query **Upstash Redis** using the SHA-256 hash string as the key.
     * **Result (HIT):** Return the cached array of validated ICD-11 codes immediately. **Cost: 0 LLM tokens, 0 vector compute cycles.**
@@ -48,6 +48,7 @@ The system utilizes a decoupled, stateful graph topology (orchestrated via **Lan
     * **Condition B (Cosine Similarity ≥ 0.985):** Pull the cached candidate's raw text metadata and run it through a Python **Local Entity Alignment Guard**. This script executes a fast regex check looking for mismatched critical negation modifiers (`no`, `not`, `denies`, `never`, `negative`).
         * *If Negation Check Passes:* Safe semantic match. Return cached ICD-11 array.
         * *If Negation Check Fails:* Unsafe semantic collision detected (e.g., symptom confirmed vs symptom denied). Reject the cache hit and route to Phase 3.
+    * The negation guard is custom, but it's possible to be improved using spaCy's NegEx for better quality regex checks.
 
 ---
 

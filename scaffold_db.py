@@ -5,6 +5,7 @@ Usage from repo root:
   ./scaffold_db.py init --all --reset
   ./scaffold_db.py seed --icd
 """
+
 import sys
 from pathlib import Path
 
@@ -13,7 +14,6 @@ ROOT = Path(__file__).parent.resolve()
 sys.path.insert(0, str(ROOT / "src"))
 
 from aegis.database.cli import main
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

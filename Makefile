@@ -1,4 +1,4 @@
-.PHONY: dev-backend dev-frontend lint format test
+.PHONY: dev-backend dev-frontend lint format test server-check
 
 # Run the FastAPI server on our unexcluded port
 dev-backend:
@@ -17,3 +17,11 @@ server-check:
 # Runs both front and back concurrently (requires the 'concurrently' or utility runner)
 dev-all:
 	make -j 2 dev-backend dev-frontend
+
+.PHONY: db-init db-seed-icd
+
+db-init:
+	uv run aegis-db init --all --reset
+
+db-seed-icd:
+	uv run aegis-db seed --icd --csv-path ./data/icd11.csv

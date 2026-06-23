@@ -223,3 +223,9 @@ CREATE TABLE checkpoint_blobs (
 * **Key ID Pattern:** `lock:case_id:{case_id_string}`
 * **Data Core Type:** String (Value = Active Processing Server Worker ID Token)
 * **Storage Operational Constraints:** Applied with an absolute short-duration `EXPIRE` duration TTL window (e.g., 60 seconds). Prevents double-processing race conditions across horizontal server environments if an end-user double-clicks execution or a serverless worker restarts unexpectedly.
+
+[Tier 1: Base Tables] ---------> [Tier 2: Core Records] ---------> [Tier 3: Junctions & Logs]
+- Patient_identity_vault          - Patient_cases                 - Patient_extracted_codes
+- ICD11_taxonomy_reference                                        - Trial_Target_codes
+- Clinical_trial                                                  - Trial_Matches
+                                                                  - Human_Review_Logs

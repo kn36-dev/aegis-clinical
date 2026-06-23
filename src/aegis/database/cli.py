@@ -4,6 +4,7 @@ Usage examples:
   python -m aegis.database.cli init --all --reset
   python -m aegis.database.cli seed --icd
 """
+
 from __future__ import annotations
 
 import argparse
@@ -18,10 +19,10 @@ from aegis.database.database import (
 )
 from aegis.database.seeds import seed_all, seed_icd11, seed_mock_cases
 
-
 logger = logging.getLogger("aegis.database.cli")
 
 
+# Parse command to
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="aegis-db")
     subparsers = parser.add_subparsers(dest="command")
@@ -51,7 +52,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         graph_path = Path(args.graph_path) if args.graph_path else None
 
         if args.all or (not args.clinical and not args.graph):
-            init_all_databases(clinical_db=clinical_path, graph_db=graph_path, force_drop=args.reset)
+            init_all_databases(
+                clinical_db=clinical_path, graph_db=graph_path, force_drop=args.reset
+            )
         else:
             if args.clinical:
                 init_clinical_database(db_path=clinical_path, force_drop=args.reset)
