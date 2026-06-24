@@ -1,18 +1,15 @@
-"""Command-line utilities for initializing and seeding the Aegis databases.
-
-Usage examples:
-  python -m aegis.database.cli init --all --reset
-  python -m aegis.database.cli seed --icd
-"""
+"""Command-line utilities for initializing and seeding the Aegis databases."""
 
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 from pathlib import Path
 from typing import Sequence
 
 from aegis.database.database import (
+    get_database_status,
     init_all_databases,
     init_clinical_database,
     init_graph_database,
@@ -22,10 +19,15 @@ from aegis.database.seeds import seed_all, seed_icd11, seed_mock_cases
 logger = logging.getLogger("aegis.database.cli")
 
 
-# Parse command to
-def main(argv: Sequence[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="aegis-db")
     subparsers = parser.add_subparsers(dest="command")
+
+    p_scaffold = subparsers.add_parser("scaffold", help="Initialize schema and seed defaults")
+    p_scaffold.add_argument("--reset", action="store_true", help="Drop and recreate databases")
+    p_scaffold.add_argument("--clinical-path", type=str, help="Path to clinical DB file")
+    p_scaffold.add_argument("--graph-path", type=str, help="Path to graph DB file")
+    p_scaffold.add_argument("--skip-seed", action="store_true", help="Skip seeding after scaffolding")
 
     p_init = subparsers.add_parser("init", help="Initialize database schema")
     p_init.add_argument("--reset", action="store_true", help="Drop and recreate databases")
@@ -43,24 +45,44 @@ def main(argv: Sequence[str] | None = None) -> int:
     p_seed.add_argument("--csv-path", type=str, help="Path to ICD-11 CSV file")
     p_seed.add_argument("--json-path", type=str, help="Path to mock cases JSON")
 
+    p_status = subparsers.add_parser("status", help="Report database status")
+    p_status.add_argument("--clinical-path", type=str, help="Path to clinical DB file")
+    p_status.add_argument("--graph-path", type=str, help="Path to graph DB file")
+
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-    if args.command == "init":
-        clinical_path = Path(args.clinical_path) if args.clinical_path else None
-        graph_path = Path(args.graph_path) if args.graph_path else None
+    if args.command in {"scaffold", "init"}:
+        clinical_path = Path(args.clinical_path) if getattr(args, "clinical_path", None) else None
+        graph_path = Path(args.graph_path) if getattr(args, "graph_path", None) else None
 
-        if args.all or (not args.clinical and not args.graph):
+        if args.command == "scaffold":
             init_all_databases(
-                clinical_db=clinical_path, graph_db=graph_path, force_drop=args.reset
+                clinical_db=clinical_path,
+                graph_db=graph_path,
+                force_drop=getattr(args, "reset", False),
+            )
+            if not getattr(args, "skip_seed", False):
+                seed_all(db_path=clinical_path)
+            return 0
+
+        if getattr(args, "all", False) or (not getattr(args, "clinical", False) and not getattr(args, "graph", False)):
+            init_all_databases(
+                clinical_db=clinical_path,
+                graph_db=graph_path,
+                force_drop=getattr(args, "reset", False),
             )
         else:
-            if args.clinical:
-                init_clinical_database(db_path=clinical_path, force_drop=args.reset)
-            if args.graph:
-                init_graph_database(db_path=graph_path, force_drop=args.reset)
-
+            if getattr(args, "clinical", False):
+                init_clinical_database(db_path=clinical_path, force_drop=getattr(args, "reset", False))
+            if getattr(args, "graph", False):
+                init_graph_database(db_path=graph_path, force_drop=getattr(args, "reset", False))
         return 0
 
     if args.command == "seed":
@@ -78,7 +100,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.cases:
                 count = seed_mock_cases(db_path=db_path, json_path=json_path)
                 logger.info("Mock-cases seed inserted %d cases", count)
+        return 0
 
+    if args.command == "status":
+        status = get_database_status(
+            clinical_db=getattr(args, "clinical_path", None),
+            graph_db=getattr(args, "graph_path", None),
+        )
+        print(json.dumps(status, indent=2))
         return 0
 
     parser.print_help()

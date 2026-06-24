@@ -42,6 +42,9 @@ aegis-clinical/
 │       │   ├── main.py         # Injects FastApi instrumentation middleware
 │       │   └── routers/
 │       ├── database/
+│       │   ├── state.py        # Engine initialization & WAL configuration
+│       │   ├── models.py       # Model schemas from Pydantic
+│       │   └── repository.py   # Clean CRUD / UPSERT functions
 │       ├── graphs/
 │       │   ├── state.py
 │       │   └── workflow.py     # Embeds OTel span trace injections on node entry/exit boundaries

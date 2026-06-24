@@ -1,38 +1,33 @@
-# src/aegis/database/connection.py or database.py
+from __future__ import annotations
+
 import logging
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 logger = logging.getLogger("aegis.database")
 
 
 @contextmanager
-def get_db_connection(db_path: Path):
-    """
-    Centralized Database Connection Factory.
-    Enforces production WAL performance thresholds and handles automatic cleanup.
-    """
-    db_path_str = str(db_path)
-    logger.debug(f"🔌 Opening optimization pipeline to SQLite instance: {db_path_str}")
+def get_db_connection(db_path: Path | str) -> Iterator[sqlite3.Connection]:
+    """Open a SQLite connection and enforce the required PRAGMA settings."""
+    target_path = Path(db_path)
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    logger.debug("Opening SQLite connection to %s", target_path)
 
-    conn = sqlite3.connect(db_path_str)
+    conn = sqlite3.connect(str(target_path))
+    conn.row_factory = sqlite3.Row
     try:
-        # Enforce performance guardrails across all connection users
-        conn.execute("PRAGMA foreign_keys = ON;")
-        conn.execute("PRAGMA journal_mode = WAL;")
-        conn.execute("PRAGMA busy_timeout = 5000;")
-
-        # Yield execution back to the caller block (e.g., a cursor operation)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=30000;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("PRAGMA foreign_keys=ON;")
         yield conn
-
-        # Automatically commit transactions if no exceptions occurred
         conn.commit()
-    except sqlite3.Error as e:
-        logger.error(f"❌ Database boundary transaction fault encountered: {e}")
+    except sqlite3.Error as exc:
+        logger.error("Database transaction fault: %s", exc)
         conn.rollback()
         raise
     finally:
-        # Guarantee closure of the file handle under all lifecycle conditions
         conn.close()
-        logger.debug("🔌 Connection recycled safely to connection pool context.")

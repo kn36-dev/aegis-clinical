@@ -1,0 +1,20 @@
+# Keeping eval ideas here:
+# Attempt to eval ICD-11 cosine similarity and retrieval results using
+# Index A: Broad to specific
+# Example A: Gastroenteritis or colitis of infectious origin > Bacterial intestinal infections > Intestinal infections due to Escherichia coli > Enteroinvasive Escherichia coli infection
+# Index B: Structured prose (Gemini)
+# Example B: Clinical Term: Enteroinvasive Escherichia coli infection. 
+#            Classification Hierarchy: Intestinal infections due to Escherichia coli; Bacterial intestinal infections; Gastroenteritis or colitis of infectious origin.
+# Index C: Title and Hierarchy (ChatGPT)
+# Example C: Title: 
+#            Enteroinvasive Escherichia coli infection 
+#            Hierarchy: 
+#            Intestinal infections due to Escherichia coli
+#            Bacterial intestinal infections
+#            Gastroenteritis or colitis of infectious origin
+# Index D: Parent concepts (ChatGPT)
+# Example D: Enteroinvasive Escherichia coli infection
+#            Parent concepts:
+#            Intestinal infections due to Escherichia coli
+#            Bacterial intestinal infections
+#            Gastroenteritis or colitis of infectious origin
