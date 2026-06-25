@@ -27,7 +27,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_scaffold.add_argument("--reset", action="store_true", help="Drop and recreate databases")
     p_scaffold.add_argument("--clinical-path", type=str, help="Path to clinical DB file")
     p_scaffold.add_argument("--graph-path", type=str, help="Path to graph DB file")
-    p_scaffold.add_argument("--skip-seed", action="store_true", help="Skip seeding after scaffolding")
+    p_scaffold.add_argument(
+        "--skip-seed", action="store_true", help="Skip seeding after scaffolding"
+    )
 
     p_init = subparsers.add_parser("init", help="Initialize database schema")
     p_init.add_argument("--reset", action="store_true", help="Drop and recreate databases")
@@ -72,7 +74,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 seed_all(db_path=clinical_path)
             return 0
 
-        if getattr(args, "all", False) or (not getattr(args, "clinical", False) and not getattr(args, "graph", False)):
+        if getattr(args, "all", False) or (
+            not getattr(args, "clinical", False) and not getattr(args, "graph", False)
+        ):
             init_all_databases(
                 clinical_db=clinical_path,
                 graph_db=graph_path,
@@ -80,7 +84,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         else:
             if getattr(args, "clinical", False):
-                init_clinical_database(db_path=clinical_path, force_drop=getattr(args, "reset", False))
+                init_clinical_database(
+                    db_path=clinical_path, force_drop=getattr(args, "reset", False)
+                )
             if getattr(args, "graph", False):
                 init_graph_database(db_path=graph_path, force_drop=getattr(args, "reset", False))
         return 0

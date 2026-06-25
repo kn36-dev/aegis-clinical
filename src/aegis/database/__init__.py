@@ -8,7 +8,11 @@ from aegis.database.database import (
     init_clinical_database,
     init_graph_database,
 )
-from aegis.database.repository import ClinicalMatchRecord, ClinicalRegistryRepository, Icd11TaxonomyRecord
+from aegis.database.repository import (
+    ClinicalMatchRecord,
+    ClinicalRegistryRepository,
+    Icd11TaxonomyRecord,
+)
 
 __all__ = [
     "ClinicalMatchRecord",

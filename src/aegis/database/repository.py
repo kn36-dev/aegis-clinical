@@ -8,8 +8,6 @@ from typing import Iterator
 
 from pydantic import BaseModel, Field
 
-from aegis.database.connection import get_db_connection
-
 
 class ClinicalMatchRecord(BaseModel):
     patient_id: str

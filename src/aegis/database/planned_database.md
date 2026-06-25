@@ -36,7 +36,7 @@ This document establishes the definitive, immutable multi-paradigm storage layer
 |  | Trial_Matches                  |                                               |
 |  |  ├── patient_id (Cumulative)   |          [LANGGRAPH PERSISTENT CHANNELS]      |
 |  |  └── trigger_case_id           |          +----------------------------------+ |
-|  |                                |          | Table: checkpoint_blobs          | |
+|  |                                |          | Table: checkpoint_blob          | |
 |  | Human_Review_Logs              |          +----------------------------------+ |
 |  +--------------------------------+                                               |
 +-----------------------------------------------------------------------------------+
@@ -146,7 +146,7 @@ CREATE TABLE Human_Review_Logs (
 
 ### E. STATE ENGINE RUNTIME CORRIDOR (Internal LangGraph Persistent Fabric)
 ```sql
-CREATE TABLE checkpoint_blobs (
+CREATE TABLE checkpoint_blob (
     thread_id TEXT NOT NULL,                   -- LangGraph operational thread tracking token (corresponds to case_id)
     checkpoint_id TEXT NOT NULL,               -- Unique state ID generation tracking string
     parent_id TEXT,                            -- Ancestral parent checkpoint token for deep branching evaluation

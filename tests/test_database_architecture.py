@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import json
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -11,8 +11,12 @@ from aegis.database.adapters import UpstashRedisAdapter, UpstashVectorAdapter
 from aegis.database.cli import main
 from aegis.database.connection import get_db_connection
 from aegis.database.database import get_database_status, init_clinical_database, init_graph_database
-from aegis.database.repository import ClinicalMatchRecord, ClinicalRegistryRepository, Icd11TaxonomyRecord
-from aegis.database.seeds import seed_icd11, seed_mock_cases
+from aegis.database.repository import (
+    ClinicalMatchRecord,
+    ClinicalRegistryRepository,
+    Icd11TaxonomyRecord,
+)
+from aegis.database.seeds import seed_icd11
 
 
 def write_icd_csv(path: Path) -> None:
@@ -53,7 +57,9 @@ def test_migrations_are_ordered_and_idempotent(tmp_path: Path) -> None:
     assert graph_db.exists()
 
     with get_db_connection(clinical_db) as conn:
-        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        tables = {
+            row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
 
     assert "patient_identity_vault" in tables
     assert "icd11_taxonomy_reference" in tables
@@ -99,7 +105,9 @@ def test_repository_upsert_select_and_rollback(tmp_path: Path) -> None:
     assert reloaded is not None
     assert reloaded.icd11_codes == ["A00"]
 
-    taxonomy = Icd11TaxonomyRecord(code="A00", title="Cholera", class_kind="category", context_path="root")
+    taxonomy = Icd11TaxonomyRecord(
+        code="A00", title="Cholera", class_kind="category", context_path="root"
+    )
     repository.upsert_icd11_entry(taxonomy)
     selected = repository.select_icd11_entry("A00")
     assert selected is not None
@@ -108,7 +116,9 @@ def test_repository_upsert_select_and_rollback(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError):
         with repository.transaction():
             repository.upsert_patient_case(
-                ClinicalMatchRecord(patient_id="patient-2", raw_notes="new", icd11_codes=[], version=1)
+                ClinicalMatchRecord(
+                    patient_id="patient-2", raw_notes="new", icd11_codes=[], version=1
+                )
             )
             raise RuntimeError("boom")
 
@@ -154,9 +164,23 @@ def test_cli_scaffold_seed_and_status(tmp_path: Path) -> None:
     write_icd_csv(csv_path)
     write_mock_cases(json_path)
 
-    assert main(["scaffold", "--reset", "--clinical-path", str(clinical_db), "--graph-path", str(graph_db)]) == 0
+    assert (
+        main(
+            [
+                "scaffold",
+                "--reset",
+                "--clinical-path",
+                str(clinical_db),
+                "--graph-path",
+                str(graph_db),
+            ]
+        )
+        == 0
+    )
     assert main(["seed", "--icd", "--db-path", str(clinical_db), "--csv-path", str(csv_path)]) == 0
-    assert main(["seed", "--cases", "--db-path", str(clinical_db), "--json-path", str(json_path)]) == 0
+    assert (
+        main(["seed", "--cases", "--db-path", str(clinical_db), "--json-path", str(json_path)]) == 0
+    )
 
     status = get_database_status(clinical_db, graph_db)
     assert status["clinical_exists"] is True

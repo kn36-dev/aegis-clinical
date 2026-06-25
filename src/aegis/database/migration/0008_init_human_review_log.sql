@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS Human_Review_Logs (
+CREATE TABLE IF NOT EXISTS human_review_log (
     review_id TEXT PRIMARY KEY,
     case_id TEXT NOT NULL,
     reviewer_badge_id TEXT NOT NULL,

@@ -97,8 +97,8 @@ CLINICAL_TABLE_SCHEMAS: Dict[str, str] = {
 }
 
 GRAPH_TABLE_SCHEMAS: Dict[str, str] = {
-    "checkpoint_blobs": """
-        CREATE TABLE IF NOT EXISTS checkpoint_blobs (
+    "checkpoint_blob": """
+        CREATE TABLE IF NOT EXISTS checkpoint_blob (
             thread_id TEXT NOT NULL,
             checkpoint_id TEXT NOT NULL,
             parent_id TEXT,

@@ -10,3 +10,22 @@ The patient_identity_vault seems to be not properly secured
    - Secured in isolated virtual private network with no public IP Address
    - Application-Layer Encryption (CLE) to encrypt and decrypt sensitive texts before sending it over the wire
 - But it does not add to the AI Engineering experise showcase, so it is currently kept extremely minimal
+
+
+### Separation of Checkpoint State and Telemetry Data
+
+Checkpoint metadata intentionally stores only trace correlation identifiers (for example, `trace_id`) rather than full OpenTelemetry span payloads. This keeps checkpoint storage compact and optimized for workflow resumption, Human-in-the-Loop (HITL) interactions, and state recovery.
+
+Detailed execution telemetry, including span timing, token usage metrics, and runtime diagnostics, is emitted separately through OpenTelemetry exporters and written to local development logs. This allows workflow state and observability data to evolve independently while keeping the checkpoint database lightweight and easy to inspect.
+
+For production-scale deployments, telemetry would typically be exported via OTLP to a dedicated observability platform such as Jaeger, Grafana Tempo, OpenObserve, or another OpenTelemetry-compatible backend. The portfolio implementation intentionally keeps observability infrastructure minimal to prioritize reproducibility and ease of setup while still demonstrating trace correlation and instrumentation patterns.
+
+In real life, a clinical system would need these, which are definitely impossible to be within scope for a portfolio demonstration:
+- Backup strategy
+- Migration strategy
+- Encryption at rest
+- PHI key management
+- Role-based access control
+- Retention policies
+- Audit immutability
+- Disaster recovery

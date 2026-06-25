@@ -1,0 +1,122 @@
+erDiagram
+    checkpoint_blob {
+        TEXT thread_id PK
+        TEXT checkpoint_id PK
+        TEXT parent_id
+        BLOB checkpoint
+        BLOB metadata
+    }
+
+    patient_identity_vault {
+        TEXT patient_id PK
+        TEXT medical_record_number UK
+        TEXT first_name
+        TEXT last_name
+        TEXT date_of_birth
+    }
+
+    patient_case {
+        TEXT case_id PK
+        TEXT patient_id FK
+        TEXT thread_id
+        TEXT status
+        TEXT ingress_timestamp
+        TEXT raw_clinical_note
+        TEXT anonymized_clinical_note
+        INTEGER version
+    }
+
+    icd11_taxonomy_reference {
+        TEXT code PK
+        TEXT title
+        TEXT class_kind
+        TEXT context_path
+    }
+
+    patient_extracted_code {
+        TEXT case_id PK,FK
+        TEXT icd11_code PK,FK
+        REAL confidence_score
+        TEXT extraction_source
+    }
+
+    clinical_trial {
+        TEXT trial_id PK
+        TEXT title
+        TEXT phase
+        TEXT sponsor
+        TEXT status
+        TEXT raw_eligibility_criteria
+    }
+
+    trial_target_code {
+        TEXT trial_id PK,FK
+        TEXT icd11_code PK,FK
+        TEXT criterion_type
+    }
+
+    trial_match {
+        TEXT match_id PK
+        TEXT patient_id FK
+        TEXT trigger_case_id FK
+        TEXT trial_id FK
+        REAL structural_match_score
+        TEXT match_status
+        TEXT justification_summary
+        TEXT created_at
+    }
+
+    human_review_logs {
+        TEXT review_id PK
+        TEXT case_id FK
+        TEXT reviewer_badge_id
+        TEXT action_taken
+        TEXT physician_notes
+        TEXT cryptographic_signature
+        TEXT timestamp
+    }
+
+
+    %% ============================================================
+    %% PATIENT DOMAIN
+    %% ============================================================
+
+    patient_identity_vault ||--o{ patient_case : owns
+
+    patient_case ||--o{ patient_extracted_code : produces
+
+    icd11_taxonomy_reference ||--o{ patient_extracted_code : assigned
+
+
+    %% ============================================================
+    %% TRIAL DOMAIN
+    %% ============================================================
+
+    clinical_trial ||--o{ trial_target_code : requires
+
+    icd11_taxonomy_reference ||--o{ trial_target_code : references
+
+
+    %% ============================================================
+    %% MATCHING DOMAIN
+    %% ============================================================
+
+    patient_identity_vault ||--o{ trial_match : matched_to
+
+    clinical_trial ||--o{ trial_match : candidate
+
+    patient_case ||--o{ trial_match : triggered_by
+
+
+    %% ============================================================
+    %% HUMAN REVIEW
+    %% ============================================================
+
+    patient_case ||--o{ human_review_logs : reviewed
+
+
+    %% ============================================================
+    %% CHECKPOINT VERSION CHAIN
+    %% ============================================================
+
+    checkpoint_blob ||--o{ checkpoint_blob : parent_checkpoint
