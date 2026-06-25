@@ -16,28 +16,36 @@ This document establishes the definitive, immutable multi-paradigm storage layer
 |                                                                                   |
 |  [SQLITE RELATIONAL DATA ENGINE]             [UPSTASH VECTOR SEMANTIC INDEX]      |
 |  +--------------------------------+          +----------------------------------+ |
-|  | Patient_identity_vault         |          | Index: icd11_taxonomy_embeddings | |
-|  |  └── patient_id  ──────────────┼──────────┼──> Metadata: icd11_code          | |
+|  | patient_identity_vault         |          | Index: icd11_taxonomy_embeddings | |
+|  |  └── patient_id  ──────────────┼──────────┼──> Metadata: code                | |
 |  |                                |          |                                  | |
-|  | Patient_cases                  |          | Index: patient_narratives        | |
+|  | patient_case                   |          | Index: patient_narratives        | |
 |  |  ├── case_id                   |          |  └── Metadata: patient_id        | |
-|  |  └── patient_id                |          |                                  | |
-|  |                                |          | Index: trial_protocols           | |
-|  | ICD11_taxonomy_reference       |          |  └── Metadata: trial_id          | |
-|  |  └── icd11_code                |          |                                  | |
-|  |                                |          | Index: semantic_llm_cache        | |
-|  | Patient_extracted_codes        |          +----------------------------------+ |
-|  |                                |                                               |
-|  | Clinical_trial                 |          [UPSTASH REDIS COORDINATION LAYER]   |
-|  |  └── trial_id                  |          +----------------------------------+ |
-|  |                                |          | Key: rate_limit:groq_api_gate    | |
-|  | Trial_Target_codes             |          | Key: lock:case_id:{id}           | |
+|  |  ├── patient_id                |          |                                  | |
+|  |  └── thread_id                 |          | Index: trial_protocols           | |
+|  |                                |          |  └── Metadata: trial_id          | |
+|  | icd11_taxonomy_reference       |          |                                  | |
+|  |  └── code                      |          | Index: semantic_llm_cache        | |
 |  |                                |          +----------------------------------+ |
-|  | Trial_Matches                  |                                               |
-|  |  ├── patient_id (Cumulative)   |          [LANGGRAPH PERSISTENT CHANNELS]      |
-|  |  └── trigger_case_id           |          +----------------------------------+ |
-|  |                                |          | Table: checkpoint_blob          | |
-|  | Human_Review_Logs              |          +----------------------------------+ |
+|  | patient_extracted_code         |                                               |
+|  |                                |          [UPSTASH REDIS COORDINATION LAYER]   |
+|  | clinical_trial                 |          +----------------------------------+ |
+|  |  └── trial_id                  |          | Key: rate_limit:groq_api_gate    | |
+|  |                                |          | Key: lock:case_id:{id}           | |
+|  | trial_target_code              |          +----------------------------------+ |
+|  |                                |                                               |
+|  | trial_match                    |          [LANGGRAPH PERSISTENT CHANNELS]      |
+|  |  ├── patient_id (Cumulative)   |          +----------------------------------+ |
+|  |  └── trigger_case_id           |          | Table: checkpoint_blob           | |
+|  |                                |          +----------------------------------+ |
+|  | human_review_log               |                                               |
+|  +--------------------------------+                                               |
+|                                                                                   |
+|  [LANGGRAPH CHECKPOINT PERSISTENCE]                                              |
+|  +--------------------------------+                                               |
+|  | checkpoint_blob                |                                               |
+|  |  ├── thread_id (case workflow) |                                               |
+|  |  └── checkpoint_id             |                                               |
 |  +--------------------------------+                                               |
 +-----------------------------------------------------------------------------------+
 ```
@@ -50,44 +58,46 @@ This document establishes the definitive, immutable multi-paradigm storage layer
 *Purpose: Complete logical isolation of Protected Health Information (PHI). Processing servers only handle the non-PII `patient_id` UUID.*
 
 ```sql
-CREATE TABLE Patient_identity_vault (
+CREATE TABLE patient_identity_vault (
     patient_id TEXT PRIMARY KEY,               -- Cryptographically unique UUIDv4
     medical_record_number TEXT UNIQUE NOT NULL,-- Masked real-world hospital identification string
     first_name TEXT NOT NULL,                  -- Real patient given name (Encrypted at rest in deployment)
     last_name TEXT NOT NULL,                   -- Real patient surname (Encrypted at rest in deployment)
-    date_of_birth DATE NOT NULL                -- ISO YYYY-MM-DD format for demographic constraint checks
+    date_of_birth TEXT NOT NULL                -- ISO YYYY-MM-DD format for demographic constraint checks
 );
 ```
 
 ### B. SYSTEM INFERENCE CORE & DIAGNOSTIC TRACKING
-*Purpose: Tracks separate clinical encounter lifecycles while maintaining strict foreign key relationships back to the patient identity layer.*
+*Purpose: Tracks separate clinical encounter lifecycles while maintaining strict foreign key relationships back to the patient identity layer. The `thread_id` field provides deterministic mapping to LangGraph workflow instances.*
 
 ```sql
-CREATE TABLE Patient_cases (
+CREATE TABLE patient_case (
     case_id TEXT PRIMARY KEY,                  -- Unique UUIDv4 transaction identifier
-    patient_id TEXT NOT NULL,                  -- Foreign Key pointing to Patient_identity_vault(patient_id)
-    status TEXT NOT NULL CHECK (status IN ('pending_ai', 'pending_hitl', 'archived', 'failed')),
+    patient_id TEXT NOT NULL,                  -- Foreign Key pointing to patient_identity_vault(patient_id)
+    thread_id TEXT NOT NULL UNIQUE,            -- Canonical mapping to LangGraph workflow instance for checkpoint resumption
+    status TEXT NOT NULL CHECK (status IN ('pending_ai', 'pending_hitl', 'archived', 'failed', 'completed')), 
     ingress_timestamp TEXT NOT NULL,           -- ISO-8601 UTC timestamp string (e.g., "2026-06-20T14:27:00Z")
     raw_clinical_note TEXT NOT NULL,           -- Unstructured, raw doctor-entered text record
     anonymized_clinical_note TEXT,             -- Scrubbed text containing 0% PHI elements, safe for LLM ingestion
-    FOREIGN KEY (patient_id) REFERENCES Patient_identity_vault(patient_id)
+    version INTEGER NOT NULL DEFAULT 1,        -- Optimistic locking version counter for concurrent writes
+    FOREIGN KEY (patient_id) REFERENCES patient_identity_vault(patient_id)
 );
 
-CREATE TABLE ICD11_taxonomy_reference (
-    icd11_code TEXT PRIMARY KEY,               -- Standardized ICD-11 Alpha-Numeric Code identifier (e.g., "1A40")
+CREATE TABLE icd11_taxonomy_reference (
+    code TEXT PRIMARY KEY,                     -- Standardized ICD-11 Alpha-Numeric Code identifier (e.g., "1A40")
     title TEXT NOT NULL,                       -- Official clinical classification label name
-    hierarchical_path TEXT NOT NULL,           -- Complete taxonomic lineage tree used for LLM context injection
-    description TEXT                           -- Diagnostic boundary definition details
+    class_kind TEXT NOT NULL,                  -- Category type classification (e.g., 'category', 'subcategory')
+    context_path TEXT NOT NULL                 -- Complete taxonomic lineage tree used for LLM context injection
 );
 
-CREATE TABLE Patient_extracted_codes (
-    case_id TEXT NOT NULL,                     -- Foreign Key pointing to Patient_cases(case_id)
-    icd11_code TEXT NOT NULL,                  -- Foreign Key pointing to ICD11_taxonomy_reference(icd11_code)
-    confidence_score REAL NOT NULL CHECK (confidence_score BETWEEN 0.0 AND 1.0), -- Extraction model certainty index
-    extraction_source TEXT NOT NULL,           -- Runtime origin: 'crewai_parsing_agent' OR 'physician_override'
+CREATE TABLE patient_extracted_code (
+    case_id TEXT NOT NULL,                     -- Foreign Key pointing to patient_case(case_id)
+    icd11_code TEXT NOT NULL,                  -- Foreign Key pointing to icd11_taxonomy_reference(code)
+    confidence_score REAL NOT NULL CHECK (confidence_score BETWEEN 0.0 AND 1.0), -- Extraction model certainty index (0.0 to 1.0)
+    extraction_source TEXT NOT NULL,           -- Runtime origin: 'crewai_parsing_agent', 'llm', or 'physician'
     PRIMARY KEY (case_id, icd11_code),         -- Prevents duplicate entry of a code inside a single ingestion instance
-    FOREIGN KEY (case_id) REFERENCES Patient_cases(case_id) ON DELETE CASCADE,
-    FOREIGN KEY (icd11_code) REFERENCES ICD11_taxonomy_reference(icd11_code)
+    FOREIGN KEY (case_id) REFERENCES patient_case(case_id) ON DELETE CASCADE,
+    FOREIGN KEY (icd11_code) REFERENCES icd11_taxonomy_reference(code)
 );
 ```
 
@@ -95,7 +105,7 @@ CREATE TABLE Patient_extracted_codes (
 *Purpose: Maps research profiles, legal criteria schemas, and baseline inclusion/exclusion indicators.*
 
 ```sql
-CREATE TABLE Clinical_trial (
+CREATE TABLE clinical_trial (
     trial_id TEXT PRIMARY KEY,                 -- Pinned ClinicalTrials.gov Registry ID identifier (e.g., "NCT05912345")
     title TEXT NOT NULL,                       -- Official research trial study name
     phase TEXT NOT NULL CHECK (phase IN ('Phase 1', 'Phase 2', 'Phase 3', 'Phase 4')),
@@ -104,56 +114,87 @@ CREATE TABLE Clinical_trial (
     raw_eligibility_criteria TEXT NOT NULL     -- Complete long-form unstructured text of research requirements
 );
 
-CREATE TABLE Trial_Target_codes (
-    trial_id TEXT NOT NULL,                    -- Foreign Key pointing to Clinical_trial(trial_id)
-    icd11_code TEXT NOT NULL,                  -- Foreign Key pointing to ICD11_taxonomy_reference(icd11_code)
+CREATE TABLE trial_target_code (
+    trial_id TEXT NOT NULL,                    -- Foreign Key pointing to clinical_trial(trial_id)
+    icd11_code TEXT NOT NULL,                  -- Foreign Key pointing to icd11_taxonomy_reference(code)
     criterion_type TEXT NOT NULL CHECK (criterion_type IN ('INCLUSION', 'EXCLUSION')), -- Directional filtering guard
     PRIMARY KEY (trial_id, icd11_code),
-    FOREIGN KEY (trial_id) REFERENCES Clinical_trial(trial_id) ON DELETE CASCADE,
-    FOREIGN KEY (icd11_code) REFERENCES ICD11_taxonomy_reference(icd11_code)
+    FOREIGN KEY (trial_id) REFERENCES clinical_trial(trial_id) ON DELETE CASCADE,
+    FOREIGN KEY (icd11_code) REFERENCES icd11_taxonomy_reference(code)
 );
 ```
 
 ### D. CRITICAL LONGITUDINAL INTEGRITY MAPS & AUDIT LOGS
-*Purpose: Mitigates the "Adam Blindspot" (Temporal Data Fragmentation) by evaluation at the patient entity level, while tracking the historical system trigger context.*
+*Purpose: Tracks patient-to-trial matching decisions across the entire patient history (cumulative patient_id) while anchoring each match to the specific clinical case (`trigger_case_id`) that triggered the eligibility determination. Prevents temporal data fragmentation blindspots.*
 
 ```sql
-CREATE TABLE Trial_Matches (
+CREATE TABLE trial_match (
     match_id TEXT PRIMARY KEY,                 -- Unique UUIDv4 matching record token
     patient_id TEXT NOT NULL,                  -- FIXED: The cumulative patient entity evaluated across ALL histories
     trigger_case_id TEXT NOT NULL,             -- The specific, localized ingestion encounter that caused this inference
-    trial_id TEXT NOT NULL,                    -- Foreign Key pointing to Clinical_trial(trial_id)
-    structural_match_score REAL NOT NULL,      -- Pure, math-derived matching score from target-to-patient profile crossover
+    trial_id TEXT NOT NULL,                    -- Foreign Key pointing to clinical_trial(trial_id)
+    structural_match_score REAL NOT NULL CHECK (structural_match_score BETWEEN 0.0 AND 1.0), -- Pure, math-derived matching score from target-to-patient profile crossover
     match_status TEXT NOT NULL CHECK (match_status IN ('PENDING_REVIEW', 'PHYSICIAN_APPROVED', 'PHYSICIAN_REJECTED')),
     justification_summary TEXT NOT NULL,       -- Structured, deterministic LLM-generated rationale citing whole profile history
-    created_at TEXT NOT NULL,                  -- ISO-8601 creation generation timestamp
-    FOREIGN KEY (patient_id) REFERENCES Patient_identity_vault(patient_id),
-    FOREIGN KEY (trigger_case_id) REFERENCES Patient_cases(case_id) ON DELETE CASCADE,
-    FOREIGN KEY (trial_id) REFERENCES Clinical_trial(trial_id) ON DELETE CASCADE
+    created_at TEXT NOT NULL,                  -- ISO-8601 creation timestamp (UTC)
+    UNIQUE(patient_id, trial_id),              -- One active match per patient-trial pair
+    FOREIGN KEY (patient_id) REFERENCES patient_identity_vault(patient_id),
+    FOREIGN KEY (trigger_case_id) REFERENCES patient_case(case_id) ON DELETE CASCADE,
+    FOREIGN KEY (trial_id) REFERENCES clinical_trial(trial_id) ON DELETE CASCADE
 );
 
-CREATE TABLE Human_Review_Logs (
+CREATE TABLE human_review_log (
     review_id TEXT PRIMARY KEY,                -- Unique UUIDv4 review record identifier
-    case_id TEXT NOT NULL,                     -- Foreign Key pointing to Patient_cases(case_id)
+    case_id TEXT NOT NULL,                     -- Foreign Key pointing to patient_case(case_id)
     reviewer_badge_id TEXT NOT NULL,           -- Encrypted hash identifying the signing physician MD
     action_taken TEXT NOT NULL CHECK (action_taken IN ('APPROVED_ALL', 'OVERRIDDEN_AND_APPROVED', 'REJECTED_CASE')),
     physician_notes TEXT,                      -- Detailed context explaining additions/deletions of codes
     cryptographic_signature TEXT NOT NULL,     -- HMAC hash of match state ensuring un-tampered data validation history
-    timestamp TEXT NOT NULL,                   -- ISO-8601 sign-off checkpoint timestamp
-    FOREIGN KEY (case_id) REFERENCES Patient_cases(case_id)
+    timestamp TEXT NOT NULL,                   -- ISO-8601 sign-off checkpoint timestamp (UTC)
+    FOREIGN KEY (case_id) REFERENCES patient_case(case_id) ON DELETE CASCADE
 );
 ```
 
-### E. STATE ENGINE RUNTIME CORRIDOR (Internal LangGraph Persistent Fabric)
+### E. STATE ENGINE RUNTIME CORRIDOR (LangGraph Persistent Checkpoint Layer)
+*Purpose: Enables deterministic workflow resumption, state recovery, and Human-in-the-Loop (HITL) checkpoints. One `thread_id` per `patient_case`, allowing lockfree resume from last checkpoint.*
+
 ```sql
 CREATE TABLE checkpoint_blob (
-    thread_id TEXT NOT NULL,                   -- LangGraph operational thread tracking token (corresponds to case_id)
+    thread_id TEXT NOT NULL,                   -- LangGraph operational thread tracking token (maps to patient_case.thread_id)
     checkpoint_id TEXT NOT NULL,               -- Unique state ID generation tracking string
     parent_id TEXT,                            -- Ancestral parent checkpoint token for deep branching evaluation
     checkpoint BLOB NOT NULL,                  -- Raw binary serialization of current thread memory/variable state
-    metadata BLOB NOT NULL,                    -- Meta configurations capturing routing paths and execution states
+    metadata BLOB NOT NULL,                    -- Trace correlation IDs and execution context (NOT full observability telemetry)
     PRIMARY KEY (thread_id, checkpoint_id)
 );
+```
+
+**Design Rationale:** Checkpoint metadata intentionally stores only trace correlation identifiers (e.g., `trace_id`) rather than full OpenTelemetry span payloads. This keeps checkpoint storage compact and optimized for workflow resumption and state recovery. Detailed execution telemetry is emitted separately through OpenTelemetry exporters.
+
+### F. DATABASE PERFORMANCE INDEXES
+*Purpose: Optimize foreign key lookups and common query patterns for workflow matching and audit trail retrieval.*
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_patient_case_patient_id
+ON patient_case(patient_id);
+
+CREATE INDEX IF NOT EXISTS idx_patient_extracted_code_case
+ON patient_extracted_code(case_id);
+
+CREATE INDEX IF NOT EXISTS idx_patient_extracted_code_icd
+ON patient_extracted_code(icd11_code);
+
+CREATE INDEX IF NOT EXISTS idx_trial_target_code_icd
+ON trial_target_code(icd11_code);
+
+CREATE INDEX IF NOT EXISTS idx_trial_match_patient
+ON trial_match(patient_id);
+
+CREATE INDEX IF NOT EXISTS idx_trial_match_trial
+ON trial_match(trial_id);
+
+CREATE INDEX IF NOT EXISTS idx_human_review_log_case
+ON human_review_log(case_id);
 ```
 
 ---
@@ -224,8 +265,8 @@ CREATE TABLE checkpoint_blob (
 * **Data Core Type:** String (Value = Active Processing Server Worker ID Token)
 * **Storage Operational Constraints:** Applied with an absolute short-duration `EXPIRE` duration TTL window (e.g., 60 seconds). Prevents double-processing race conditions across horizontal server environments if an end-user double-clicks execution or a serverless worker restarts unexpectedly.
 
-[Tier 1: Base Tables] ---------> [Tier 2: Core Records] ---------> [Tier 3: Junctions & Logs]
-- Patient_identity_vault          - Patient_cases                 - Patient_extracted_codes
-- ICD11_taxonomy_reference                                        - Trial_Target_codes
-- Clinical_trial                                                  - Trial_Matches
-                                                                  - Human_Review_Logs
+[Tier 1: Identity & Reference Tables] ---> [Tier 2: Data & Inference] ---> [Tier 3: Matching & Audit]
+- patient_identity_vault                       - patient_case                     - patient_extracted_code
+- icd11_taxonomy_reference                     - checkpoint_blob                  - trial_target_code
+- clinical_trial                                                                 - trial_match
+                                                                                 - human_review_log
