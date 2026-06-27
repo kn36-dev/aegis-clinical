@@ -149,3 +149,6 @@ Engineered a deterministic clinical state chart via LangGraph to guarantee seque
 Orchestrated specialized agent sub-graphs using CrewAI to autonomously parse colloquial symptoms into structured ICD-11 codes while concurrently driving validation lookups.
 Leveraged PydanticAI to enforce rigid runtime validation boundaries on unstructured text notes, eliminating unvalidated string escapes from penetrating downstream databases.
 Technologies: Advanced Python Archetypes, Asynchronous Concurrency, State-Machine Topology, Schema Enforcement, Human-in-the-Loop Orchestration.
+
+"the system becomes more efficient over time through deterministic caching." (current implementation)
+"the system can be extended to leverage accumulated physician-reviewed cases as institutional semantic memory." (future enhancement)
