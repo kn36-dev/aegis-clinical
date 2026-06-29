@@ -5,15 +5,24 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class AppSettings(BaseSettings):
     """
-    Defines runtime type boundaries for the Aegis engine.
-    Fails fast at application boot if required variables are absent.
+    Centralized runtime configuration for the Aegis platform.
+
+    Configuration is validated once during application startup,
+    causing the application to fail fast if any required values
+    are missing or malformed.
     """
 
     ENVIRONMENT: str = Field(default="development")
-    # Enforces value presence and masks logging output
+
+    LLM_PROVIDER: str = Field(default="groq")
+    LLM_MODEL: str = Field(default="qwen/qwen3-32b")
     GROQ_API_KEY: SecretStr = Field(default=...)
+
     UPSTASH_VECTOR_REST_URL: HttpUrl = Field(default=...)
     UPSTASH_VECTOR_REST_TOKEN: SecretStr = Field(default=...)
+
+    UPSTASH_REDIS_REST_URL: HttpUrl = Field(default=...)
+    UPSTASH_REDIS_REST_TOKEN: SecretStr = Field(default=...)
 
     # Local SQLite paths defined in your architecture map
     CLINICAL_DB_PATH: str = "data/clinical_registry.db"

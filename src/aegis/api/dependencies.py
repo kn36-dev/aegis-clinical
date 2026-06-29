@@ -1,10 +1,54 @@
 # src/aegis/api/dependencies.py
 import os
+from functools import lru_cache
 
 from fastapi import Request
 from langchain.chat_models import init_chat_model
+from upstash_redis import Redis
+from upstash_vector import Index
 
 from aegis.config import settings
+
+
+@lru_cache
+def get_chat_model():
+    """
+    Returns the application's default chat model.
+
+    The concrete provider (Groq, OpenAI, Gemini, etc.)
+    is selected entirely through configuration.
+    """
+
+    return init_chat_model(
+        model=settings.LLM_MODEL,
+        model_provider=settings.LLM_PROVIDER,
+        api_key=settings.GROQ_API_KEY.get_secret_value(),
+        temperature=0.0,
+    )
+
+
+@lru_cache
+def get_vector_client() -> Index:
+    """
+    Returns a singleton Upstash Vector client.
+    """
+
+    return Index(
+        url=str(settings.UPSTASH_VECTOR_REST_URL),
+        token=settings.UPSTASH_VECTOR_REST_TOKEN.get_secret_value(),
+    )
+
+
+@lru_cache
+def get_redis_client() -> Redis:
+    """
+    Returns a singleton Upstash Redis client.
+    """
+
+    return Redis(
+        url=str(settings.UPSTASH_REDIS_REST_URL),
+        token=settings.UPSTASH_REDIS_REST_TOKEN.get_secret_value(),
+    )
 
 
 def get_llm_client():
@@ -22,15 +66,9 @@ def get_llm_client():
 
 
 def get_graph_checkpointer(request: Request):
+    """
+    Retrieves the shared LangGraph checkpoint manager
+    attached during FastAPI startup.
+    """
+
     return request.app.state.graph_checkpointer
-
-
-def get_vector_client():
-    """
-    Example of how you extract your new Upstash variables anywhere in your app.
-    """
-    # Converting the HttpUrl object back to a clean string for an external SDK client
-    url_string = str(settings.UPSTASH_VECTOR_REST_URL)
-    token_string = settings.UPSTASH_VECTOR_REST_TOKEN.get_secret_value()
-
-    return f"Connected to vector engine at {url_string} safely 🚀"

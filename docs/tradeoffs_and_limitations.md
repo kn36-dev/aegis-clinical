@@ -46,3 +46,9 @@ The repository intentionally targets a reference deployment consisting of a sing
 ## Single Source of Truth
 
 The project intentionally avoids duplicating mutable clinical note content inside Upstash Vector metadata. Vector records serve exclusively as semantic indexes returning stable identifiers, while SQLite remains the sole authoritative source of clinical text and relational state. This pointer-based architecture minimizes synchronization complexity, eliminates metadata drift, and keeps the semantic index focused solely on approximate nearest-neighbor retrieval.
+
+---
+
+## Deferred AI-Assisted Trial Eligibility Parsing
+
+Future iterations may introduce AI-assisted parsing of free-text eligibility criteria into structured trial requirements. This capability was intentionally deferred because it would require an additional reasoning pipeline, increasing inference cost, orchestration complexity, and evaluation surface beyond the primary objective of demonstrating deterministic clinical note processing.
