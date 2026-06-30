@@ -7,7 +7,9 @@ from langchain.chat_models import init_chat_model
 from upstash_redis import Redis
 from upstash_vector import Index
 
-from aegis.config import settings
+from aegis.config import get_settings
+
+settings = get_settings()
 
 
 @lru_cache

@@ -11,3 +11,11 @@ class PatientGraphState(TypedDict):
     confidence_score: float  # Validation metric evaluated by PydanticAI
     status: str  # PENDING_AI, PENDING_HITL, or ARCHIVED
     hitl_rejection_notes: str
+
+    # Consider and consolidate these
+    normalized_note: str
+    embedding: str
+    candidate_icd_codes: str
+    structured_output: str
+    physician_review: str
+    final_codes: str

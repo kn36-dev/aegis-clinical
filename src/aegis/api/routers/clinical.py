@@ -1,4 +1,10 @@
 # src/aegis/api/routers/clinical.py
+# Below should be included
+# POST /api/v1/clinical/ingest
+# GET /api/v1/patients
+# GET /api/v1/patients/{patient_id}
+# GET /api/v1/patients/{patient_id}/timeline
+# And many more in /api_contract_plan.md
 
 from __future__ import annotations
 
