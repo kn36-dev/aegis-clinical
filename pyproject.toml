@@ -36,6 +36,12 @@ select = ["E", "F", "B", "ASYNC", "TCH"]
 [tool.ruff.format]
 line-ending = "lf"
 
+[tool.ruff.lint.flake8-type-checking]
+runtime-evaluated-base-classes = [
+    "pydantic.BaseModel",
+    "aegis.models.base.DomainModel",
+]
+
 [tool.mypy]
 strict = true
 ignore_missing_imports = true

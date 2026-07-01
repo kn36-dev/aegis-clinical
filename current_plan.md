@@ -1,53 +1,5 @@
 # Aegis Clinical — Implementation Roadmap
 
-## Phase 0 — Foundation Cleanup
-
-### Complete
-
-* ✅ Typed application configuration (`config.py`)
-* ✅ FastAPI lifespan management
-* ✅ SQLite LangGraph checkpointing
-* ✅ Dependency injection for:
-
-  * Chat model
-  * Upstash Vector
-  * Upstash Redis
-  * Graph checkpointer
-
-Before continuing:
-
-* Remove the duplicate `get_llm_client()`
-* Keep only `get_chat_model()` as the application's LLM dependency.
-
----
-
-# Phase 1 — Unit Test the Infrastructure
-
-The first goal is proving that the application's infrastructure can be instantiated correctly.
-
-## Files
-
-```
-tests/
-    api/
-        test_dependencies.py
-
-    test_config.py
-```
-
-Verify:
-
-* AppSettings loads correctly
-* Missing environment variables fail fast
-* `get_chat_model()` returns a configured model
-* `get_vector_client()` is cached (`lru_cache`)
-* `get_redis_client()` is cached
-* Graph checkpointer dependency retrieves the lifespan object correctly
-
-At this stage no LLM calls should actually occur.
-
----
-
 # Phase 2 — Domain Models
 
 Before building the workflow, define every object that flows through it.

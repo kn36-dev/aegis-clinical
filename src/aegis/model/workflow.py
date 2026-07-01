@@ -1,3 +1,0 @@
-# SymptomExtraction
-# PhysicianReview
-# WorkflowState
