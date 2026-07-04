@@ -2,19 +2,34 @@
 # Attempt to eval ICD-11 cosine similarity and retrieval results using
 # Index A: Broad to specific
 # Example A: Gastroenteritis or colitis of infectious origin > Bacterial intestinal infections > Intestinal infections due to Escherichia coli > Enteroinvasive Escherichia coli infection
-# Index B: Structured prose (Gemini)
+# Index B: Structured prose (model G)
 # Example B: Clinical Term: Enteroinvasive Escherichia coli infection. 
 #            Classification Hierarchy: Intestinal infections due to Escherichia coli; Bacterial intestinal infections; Gastroenteritis or colitis of infectious origin.
-# Index C: Title and Hierarchy (ChatGPT)
+# Index C: Title and Hierarchy (model C)
 # Example C: Title: 
 #            Enteroinvasive Escherichia coli infection 
 #            Hierarchy: 
 #            Intestinal infections due to Escherichia coli
 #            Bacterial intestinal infections
 #            Gastroenteritis or colitis of infectious origin
-# Index D: Parent concepts (ChatGPT)
+# Index D: Parent concepts (model C alt)
 # Example D: Enteroinvasive Escherichia coli infection
 #            Parent concepts:
 #            Intestinal infections due to Escherichia coli
 #            Bacterial intestinal infections
 #            Gastroenteritis or colitis of infectious origin
+
+# Evals based on embedding representations
+# Prose vs Hierarchy vs Title
+
+
+# (B) Introduce “embedding observability”
+
+# Track:
+
+# cluster consistency of ICD categories
+# retrieval drift over time
+# nearest-neighbor stability
+# failure rates per category
+
+# This is how you detect when the “core brain” changes behavior.

@@ -10,6 +10,50 @@ def test_workflow_initial_state():
 
     assert state.patient is None
     assert state.clinical_note is None
+    assert state.taxonomy_candidates == ()
+    assert state.icd_suggestions == ()
+    assert state.physician_review is None
+    assert state.trial_matches == ()
+
+
+def test_workflow_is_mutable():
+    state = WorkflowState()
+
+    state.current_step = "vector_retrieval"
+
+    assert state.current_step == "vector_retrieval"
+
+
+def test_workflow_round_trip():
+    state = WorkflowState(
+        current_step="icd_reasoning",
+        trace_id=uuid4(),
+    )
+
+    restored = WorkflowState.model_validate(state.model_dump())
+
+    assert restored == state
+
+
+def test_workflow_json_round_trip():
+    state = WorkflowState(
+        current_step="physician_review",
+        trace_id=uuid4(),
+    )
+
+    restored = WorkflowState.model_validate_json(state.model_dump_json())
+
+    assert restored == state
+
+
+def test_workflow_supports_partial_execution():
+    state = WorkflowState(
+        current_step="vector_retrieval",
+    )
+
+    assert state.patient is None
+    assert state.clinical_note is None
+    assert state.taxonomy_candidates == ()
     assert state.icd_suggestions == ()
 
 
@@ -42,24 +86,9 @@ def test_workflow_state_round_trip():
     assert restored.trace_id == state.trace_id
 
 
-def test_workflow_json_round_trip():
-    state = WorkflowState(
-        current_step="icd_retrieval",
-        trace_id=uuid4(),
-        last_updated=datetime.now(timezone.utc),
-    )
-
-    restored = WorkflowState.model_validate_json(state.model_dump_json())
-
-    assert restored == state
-
-
-def test_workflow_supports_partial_pipeline():
+def test_workflow_state_is_mutable():
     state = WorkflowState()
 
-    # Only ICD stage completed
-    state.current_step = "icd_suggestion"
+    state.current_step = "symptom_extraction"
 
-    assert state.patient is None
-    assert state.symptom_extraction is None
-    assert state.icd_suggestions == ()
+    assert state.current_step == "symptom_extraction"

@@ -1,0 +1,53 @@
+flowchart TD
+
+subgraph State
+WorkflowState
+end
+
+subgraph Domain Models
+Patient
+ClinicalNote
+SymptomExtraction
+TaxonomyCandidate
+ICDSuggestion
+PhysicianReview
+Trial
+TrialMatch
+end
+
+subgraph LangGraph Nodes
+LoadPatient
+LoadNote
+ExtractSymptoms
+RetrieveICD
+ReasonICD
+Review
+MatchTrials
+Persist
+end
+
+WorkflowState --> LoadPatient
+LoadPatient --> Patient
+
+Patient --> LoadNote
+LoadNote --> ClinicalNote
+
+ClinicalNote --> ExtractSymptoms
+ExtractSymptoms --> SymptomExtraction
+
+SymptomExtraction --> RetrieveICD
+RetrieveICD --> TaxonomyCandidate
+
+TaxonomyCandidate --> ReasonICD
+ReasonICD --> ICDSuggestion
+
+ICDSuggestion --> Review
+Review --> PhysicianReview
+
+Patient --> MatchTrials
+Trial --> MatchTrials
+PhysicianReview --> MatchTrials
+
+MatchTrials --> TrialMatch
+
+TrialMatch --> Persist

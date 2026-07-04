@@ -1,0 +1,16 @@
+flowchart LR
+
+ClinicalNote
+    --> SymptomExtraction
+
+SymptomExtraction
+    --> TaxonomyCandidate
+
+TaxonomyCandidate
+    --> ICDSuggestion
+
+ICDSuggestion
+    --> PhysicianReview
+
+PhysicianReview
+    --> TrialMatch

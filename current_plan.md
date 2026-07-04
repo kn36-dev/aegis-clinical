@@ -1,43 +1,5 @@
 # Aegis Clinical — Implementation Roadmap
 
-# Phase 2 — Domain Models
-
-Before building the workflow, define every object that flows through it.
-
-## Suggested structure
-
-```
-src/aegis/models/
-
-    patient.py
-
-    clinical_note.py
-
-    icd11.py
-
-    workflow.py
-
-    trial.py
-```
-
-Examples:
-
-```
-ClinicalNote
-
-SymptomExtraction
-
-ICDSuggestion
-
-PhysicianReview
-
-WorkflowState
-```
-
-These become the shared contracts across CrewAI, LangGraph and the API.
-
----
-
 # Phase 3 — Prompt Definitions
 
 Separate prompt engineering from orchestration.
@@ -47,7 +9,7 @@ src/aegis/prompts/
 
     symptom_extraction.py
 
-    icd_validation.py
+    icd_reasoning.py
 
     trial_matching.py
 ```

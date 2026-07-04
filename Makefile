@@ -25,3 +25,9 @@ db-init:
 
 db-seed-icd:
 	uv run aegis-db seed --icd --csv-path ./data/icd11.csv
+
+# Makefile should contain these as well:
+# make init-db
+# make seed-db
+# make build-index
+# make run

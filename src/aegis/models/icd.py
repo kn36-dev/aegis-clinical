@@ -42,6 +42,7 @@ class TaxonomyCandidate(DomainModel):
     similarity_score: float = Field(
         ge=0.0,
         le=1.0,
+        description="Cosine similarity returned by vector search.",
     )
 
 

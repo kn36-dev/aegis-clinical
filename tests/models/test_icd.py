@@ -4,6 +4,62 @@ from pydantic import ValidationError
 from aegis.models.icd import ICDConcept
 
 
+def test_taxonomy_candidate_construction():
+    concept = ICDConcept(
+        code="CA40",
+        title="Pneumonia",
+    )
+
+    candidate = TaxonomyCandidate(
+        concept=concept,
+        similarity_score=0.96,
+    )
+
+    assert candidate.concept == concept
+    assert candidate.similarity_score == 0.96
+
+
+def test_taxonomy_candidate_requires_similarity_range():
+    concept = ICDConcept(
+        code="CA40",
+        title="Pneumonia",
+    )
+
+    with pytest.raises(ValidationError):
+        TaxonomyCandidate(
+            concept=concept,
+            similarity_score=1.5,
+        )
+
+
+def test_taxonomy_candidate_round_trip():
+    candidate = TaxonomyCandidate(
+        concept=ICDConcept(
+            code="CA40",
+            title="Pneumonia",
+        ),
+        similarity_score=0.93,
+    )
+
+    restored = TaxonomyCandidate.model_validate(candidate.model_dump())
+
+    assert restored == candidate
+
+
+def test_taxonomy_candidate_json_round_trip():
+    candidate = TaxonomyCandidate(
+        concept=ICDConcept(
+            code="CA40",
+            title="Pneumonia",
+        ),
+        similarity_score=0.91,
+    )
+
+    restored = TaxonomyCandidate.model_validate_json(candidate.model_dump_json())
+
+    assert restored == candidate
+
+
 def test_icd_construction():
     concept = ICDConcept(
         code="CA40",

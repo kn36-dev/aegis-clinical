@@ -1,0 +1,62 @@
+flowchart TD
+
+    Start([START])
+
+    End([END])
+
+    WS[(WorkflowState)]
+
+    %% -------------------------
+
+    A[Load Patient]
+
+    B[Load Clinical Note]
+
+    C[Symptom Extraction]
+
+    D[ICD Retrieval<br/>Upstash Vector]
+
+    E[ICD Reasoning]
+
+    F[Physician Review]
+
+    G{Approved?}
+
+    H[Trial Matching]
+
+    I[Persist Results]
+
+    %% -------------------------
+
+    Start --> A
+
+    A --> B
+
+    B --> C
+
+    C --> D
+
+    D --> E
+
+    E --> F
+
+    F --> G
+
+    G -->|Approved / Amended| H
+
+    G -->|Rejected| End
+
+    H --> I
+
+    I --> End
+
+    %% -------------------------
+
+    WS -.shared state.-> A
+    WS -.shared state.-> B
+    WS -.shared state.-> C
+    WS -.shared state.-> D
+    WS -.shared state.-> E
+    WS -.shared state.-> F
+    WS -.shared state.-> H
+    WS -.shared state.-> I
