@@ -1,22 +1,71 @@
-# builders.py
+"""
+Representation Builder.
 
-# Coordinates representation generation.
+Coordinates representation generation while remaining completely
+agnostic to the specific semantic strategy employed.
 
-# Something like:
+Pipeline
 
-# ICDConcept
+    ICDTaxonomyRecord
+            │
+            ▼
+    RepresentationBuilder
+            │
+            ▼
+    RepresentationStrategy
+            │
+            ▼
+    RepresentationDocument
+"""
 
-# ↓
+from __future__ import annotations
 
-# representation strategy
+from aegis.database.repositories.models import ICDTaxonomyRecord
+from aegis.indexing.documents import RepresentationDocument
+from aegis.indexing.representations.base import (
+    RepresentationStrategy,
+)
 
-# ↓
 
-# RepresentationDocument
+class RepresentationBuilder:
+    """
+    Orchestrates semantic representation generation.
 
-# It knows:
+    The builder itself contains no representation logic.
 
-# which strategy
-# which metadata
+    Instead it delegates the transformation to the configured
+    RepresentationStrategy.
+    """
 
-# It does NOT know embeddings.
+    def __init__(
+        self,
+        strategy: RepresentationStrategy,
+    ):
+        self._strategy = strategy
+
+    @property
+    def strategy(self) -> RepresentationStrategy:
+        """
+        The active semantic representation strategy.
+        """
+        return self._strategy
+
+    def build(
+        self,
+        record: ICDTaxonomyRecord,
+    ) -> RepresentationDocument:
+        """
+        Generate the canonical representation document
+        for a taxonomy record.
+        """
+        return self._strategy.build(record)
+
+    def build_many(
+        self,
+        records: list[ICDTaxonomyRecord],
+    ) -> list[RepresentationDocument]:
+        """
+        Generate representation documents for multiple ICD concepts.
+        """
+
+        return [self.build(record) for record in records]

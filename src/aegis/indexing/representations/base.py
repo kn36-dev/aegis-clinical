@@ -1,48 +1,67 @@
-# representations.py
+"""
+Semantic representation strategies for ICD-11 concepts.
 
-# Pure transformation logic.
+A representation strategy transforms an ICD taxonomy record into the
+canonical text that will be embedded into the vector database.
 
-# No embeddings.
+Pipeline
 
-# No database.
+    ICDTaxonomyRecord
+            │
+            ▼
+    RepresentationStrategy
+            │
+            ▼
+    RepresentationDocument
+            │
+            ▼
+    Embedding Provider
+            │
+            ▼
+    VectorDocument
 
-# No Upstash.
+Representation strategies are intentionally:
 
-# Example responsibility:
+- deterministic
+- provider-agnostic
+- side-effect free
+- independent of LangGraph
+- independent of repositories
+"""
 
-# ICDConcept
+from __future__ import annotations
 
-# ↓
+from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
-# Structured prose
+if TYPE_CHECKING:
+    from aegis.database.repositories.models import ICDTaxonomyRecord
+    from aegis.indexing.documents import (
+        RepresentationDocument,
+        RepresentationType,
+    )
 
-# Later:
 
-# ICDConcept
+class RepresentationStrategy(ABC):
+    """
+    Abstract base class for all semantic representation strategies.
 
-# ↓
+    A strategy receives an ICD taxonomy record and produces the exact
+    text that should be embedded.
+    """
 
-# Hierarchy
+    @property
+    @abstractmethod
+    def representation_type(self) -> RepresentationType:
+        """Type of semantic representation produced."""
+        raise NotImplementedError
 
-# ↓
-
-# Title
-
-# ↓
-
-# Parent Context
-
-# For example:
-
-# class StructuredProseRepresentation:
-#     def build(...)
-
-# Eventually:
-
-# class TitleRepresentation
-
-# class HierarchyRepresentation
-
-# class ParentContextRepresentation
-
-# These should be interchangeable.
+    @abstractmethod
+    def build(
+        self,
+        record: ICDTaxonomyRecord,
+    ) -> RepresentationDocument:
+        """
+        Produce a canonical representation document.
+        """
+        raise NotImplementedError
