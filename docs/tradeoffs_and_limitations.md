@@ -74,4 +74,19 @@ The current retrieval architecture intentionally assumes that modern embedding m
 
 ## Semantic Dependency Tradeoff: Embedding Model as System-Level Meaning Layer
 
-The architecture intentionally consolidates semantic interpretation into the embedding model, which serves as the primary interface between free-form clinical notes and structured ICD-11 concepts, replacing earlier multi-stage approaches such as LLM-based symptom extraction with a unified retrieval space. This reduces orchestration complexity and improves system determinism, but introduces a core dependency on the embedding model’s representational quality, as it now implicitly handles semantic feature extraction, medical language normalization, and mapping to ICD ontology space. As a result, system correctness is increasingly determined by embedding space geometry rather than procedural logic, making model selection a system-level decision evaluated through retrieval benchmarks (Recall@K, MRR, nDCG) against a fixed ICD-11 ground truth. This tradeoff is accepted in exchange for simpler pipelines, lower inference cost, and clearer separation between indexing and retrieval stages, while more complex approaches such as multi-representation indexing or hybrid retrieval are explicitly deferred to maintain a stable and reproducible baseline.     
+The architecture intentionally consolidates semantic interpretation into the embedding model, which serves as the primary interface between free-form clinical notes and structured ICD-11 concepts, replacing earlier multi-stage approaches such as LLM-based symptom extraction with a unified retrieval space. This reduces orchestration complexity and improves system determinism, but introduces a core dependency on the embedding model’s representational quality, as it now implicitly handles semantic feature extraction, medical language normalization, and mapping to ICD ontology space. As a result, system correctness is increasingly determined by embedding space geometry rather than procedural logic, making model selection a system-level decision evaluated through retrieval benchmarks (Recall@K, MRR, nDCG) against a fixed ICD-11 ground truth. This tradeoff is accepted in exchange for simpler pipelines, lower inference cost, and clearer separation between indexing and retrieval stages, while more complex approaches such as multi-representation indexing or hybrid retrieval are explicitly deferred to maintain a stable and reproducible baseline.
+
+---
+
+## Free Tier Operational Constraint
+
+The current implementation targets the Upstash Vector free tier during development. This environment enforces a daily update quota that is significantly lower than the complete ICD taxonomy. Rather than embedding provider-specific quota handling into the indexing architecture, operational concerns such as checkpointing, resumable uploads, and scheduled batch execution are intentionally separated from the core indexing pipeline. This preserves a clean architectural boundary between deterministic indexing logic and deployment-specific operational workflows. In production deployments, where vector databases typically support substantially higher ingestion throughput, these operational utilities can be replaced or omitted without affecting the indexing pipeline or domain architecture.
+
+---
+
+## External Vector Store Dependency Tradeoff
+
+The system intentionally integrates with Upstash Vector for production-like semantic indexing capabilities. However, Upstash operates under external quota and provisioning constraints that are outside the control of this system. To preserve architectural correctness, the vector store is abstracted behind a provider interface, allowing interchangeable deployment modes:
+- Local mode: in-memory or local vector store for reproducible execution
+- Cloud mode: Upstash Vector for realistic production deployment
+This design ensures reproducibility of the core indexing pipeline while acknowledging external infrastructure limitations. Full end-to-end cloud reproduction requires external credentials and is not part of the deterministic system boundary.

@@ -46,8 +46,7 @@ if TYPE_CHECKING:
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from src.aegis.embeddings.base import EmbeddingProvider
-    from src.aegis.vectorstores.base import VectorUploader
+    from aegis.embeddings.base import EmbeddingProvider
 
 
 class IndexingPipeline:
@@ -65,12 +64,10 @@ class IndexingPipeline:
         repository: ICDRepository,
         builder: RepresentationBuilder,
         embedder: EmbeddingProvider,
-        uploader: VectorUploader,
     ) -> None:
         self._repository = repository
         self._builder = builder
         self._embedder = embedder
-        self._uploader = uploader
 
     def build_representation_documents(
         self,
@@ -95,20 +92,9 @@ class IndexingPipeline:
 
         return self._embedder.embed_many(representations)
 
-    def upload(
-        self,
-    ) -> None:
+    def run(self) -> list[VectorDocument]:
         """
-        Upload all generated vectors into the configured vector store.
+        PURE FUNCTION STYLE:
+        no side effects, no uploading, no persistence.
         """
-
-        vectors = self.build_vector_documents()
-
-        self._uploader.upload_many(vectors)
-
-    def run(self) -> None:
-        """
-        Execute the complete offline indexing pipeline.
-        """
-
-        self.upload()
+        return self.build_vector_documents()
