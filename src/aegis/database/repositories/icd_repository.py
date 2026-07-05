@@ -129,9 +129,20 @@ class ICDRepository:
                 code,
                 title,
                 class_kind,
-                context_path
+                context_path,
+                block_id,
+                chapter_no,
+                is_leaf,
+                is_residual,
+                grouping_1,
+                grouping_2,
+                grouping_3,
+                grouping_4,
+                grouping_5,
+                foundation_uri,
+                linearization_uri
             )
-            VALUES (?, ?, ?, ?);
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
             [
                 (
@@ -139,11 +150,21 @@ class ICDRepository:
                     r.title,
                     r.class_kind,
                     r.context_path,
+                    r.block_id,
+                    r.chapter_no,
+                    r.is_leaf,
+                    r.is_residual,
+                    r.grouping_1,
+                    r.grouping_2,
+                    r.grouping_3,
+                    r.grouping_4,
+                    r.grouping_5,
+                    r.foundation_uri,
+                    r.linearization_uri,
                 )
                 for r in records
             ],
         )
-
         self._conn.commit()
 
     # ------------------------------------------------------------------------

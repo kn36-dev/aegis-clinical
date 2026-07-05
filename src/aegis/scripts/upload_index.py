@@ -51,6 +51,16 @@ def main():
 
     vector_documents = pipeline.run()
 
+    logger.info("Generated %d vector documents", len(vector_documents))
+
+    for doc in vector_documents[:5]:
+        logger.info(
+            "Preview | concept=%s | embedding_dim=%d | representation=%s",
+            doc.representation.concept_id,
+            len(doc.embedding),
+            doc.representation.text,
+        )
+
     # ----------------------------
     # 3. Upload job
     # ----------------------------
@@ -61,6 +71,7 @@ def main():
         vector_store=vector_store,
         checkpoint_store=CheckpointStore(Path("./state/upload_checkpoint.json")),
         batch_size=500,
+        max_documents_per_run=9000,
     )
 
     job.run(vector_documents)

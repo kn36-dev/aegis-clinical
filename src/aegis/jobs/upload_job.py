@@ -14,21 +14,14 @@ if TYPE_CHECKING:
     from aegis.indexing.documents import VectorDocument
     from aegis.vectorstores.base import VectorStore
 
-# ----------------------------
+
+# -----------------------------------------------------------------------------
 # Checkpoint
-# ----------------------------
+# -----------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
 class UploadCheckpoint:
-    """
-    Tracks progress of a long-running vector upload job.
-
-    This is intentionally minimal:
-    - index-based progress (stable across runs)
-    - no dependency on external systems
-    """
-
     next_index: int
     batch_size: int
     total: int
@@ -36,12 +29,6 @@ class UploadCheckpoint:
 
 
 class CheckpointStore:
-    """
-    File-based checkpoint persistence.
-
-    Simple, deterministic, and sufficient for offline indexing jobs.
-    """
-
     def __init__(self, path: Path):
         self.path = path
 
@@ -74,25 +61,27 @@ class CheckpointStore:
         )
 
 
-# ----------------------------
+# -----------------------------------------------------------------------------
 # Upload Job
-# ----------------------------
+# -----------------------------------------------------------------------------
 
 
 class UploadJob:
     """
-    Orchestrates batched uploads of VectorDocuments into a VectorStore.
+    Uploads VectorDocuments into a VectorStore.
 
-    Responsibilities:
+    Responsibilities
+    ----------------
     - batching
-    - checkpointing
-    - resuming
-    - enforcing external constraints (e.g. Upstash limits)
+    - checkpoint persistence
+    - resumable execution
+    - limiting work performed in a single execution
 
-    Does NOT:
-    - build embeddings
-    - build representations
-    - decide vector schema
+    Does NOT know:
+    - embeddings
+    - representation strategies
+    - Upstash
+    - LangGraph
     """
 
     def __init__(
@@ -100,17 +89,16 @@ class UploadJob:
         vector_store: VectorStore,
         checkpoint_store: CheckpointStore,
         batch_size: int = 500,
+        max_documents_per_run: int | None = None,
     ):
         self.vector_store = vector_store
         self.checkpoint_store = checkpoint_store
         self.batch_size = batch_size
+        self.max_documents_per_run = max_documents_per_run
 
     def run(self, documents: List[VectorDocument]) -> None:
-        logger.info(f"Starting upload job | total={len(documents)} | batch_size={self.batch_size}")
-
         checkpoint = self.checkpoint_store.load()
 
-        start = checkpoint.next_index if checkpoint else 0
         total = len(documents)
 
         if checkpoint is None:
@@ -120,28 +108,61 @@ class UploadJob:
                 total=total,
             )
 
-        while start < total:
-            end = min(start + self.batch_size, total)
+        if checkpoint.completed:
+            logger.info("Upload already completed.")
+            return
+
+        start = checkpoint.next_index
+
+        execution_limit = total
+
+        if self.max_documents_per_run is not None:
+            execution_limit = min(
+                total,
+                start + self.max_documents_per_run,
+            )
+
+        logger.info(
+            "Starting upload job | start=%d limit=%d total=%d batch_size=%d",
+            start,
+            execution_limit,
+            total,
+            self.batch_size,
+        )
+
+        while start < execution_limit:
+            end = min(
+                start + self.batch_size,
+                execution_limit,
+            )
+
             batch = documents[start:end]
 
-            logger.info(f"Uploading batch | start={start} end={end} total={total}")
-            # ---- Upsert batch ----
+            logger.info(
+                "Uploading batch [%d:%d]",
+                start,
+                end,
+            )
+
             self.vector_store.index_many(batch)
 
             start = end
 
-            # ---- Save checkpoint ----
+            completed = start >= total
+
             checkpoint = UploadCheckpoint(
                 next_index=start,
                 batch_size=self.batch_size,
                 total=total,
-                completed=(start >= total),
+                completed=completed,
             )
 
             self.checkpoint_store.save(checkpoint)
 
-            logger.info(f"Uploaded batch successfully | up_to={start}")
-            print(f"[UploadJob] Uploaded {start}/{total}")
+            logger.info(
+                "Progress %d/%d",
+                start,
+                total,
+            )
 
-        logger.info("Upload job completed successfully")
-        print("[UploadJob] Completed")
+        logger.info("Execution finished.")

@@ -73,6 +73,38 @@ def test_contains_classification(
     assert taxonomy_record.class_kind in document.text
 
 
+def test_title_strips_leading_dashes():
+    strategy = StructuredProseRepresentation()
+    record = ICDTaxonomyRecord(
+        code="1A00",
+        title="- - - Cholera",
+        class_kind="category",
+        block_id="1A0",
+        chapter_no="01",
+    )
+
+    document = strategy.build(record)
+
+    assert "Cholera" in document.text
+    assert "- - - Cholera" not in document.text
+
+
+def test_contains_block_and_chapter_details():
+    strategy = StructuredProseRepresentation()
+    record = ICDTaxonomyRecord(
+        code="1A00",
+        title="Cholera",
+        class_kind="category",
+        block_id="1A0",
+        chapter_no="01",
+    )
+
+    document = strategy.build(record)
+
+    assert "Block: 1A0" in document.text
+    assert "Chapter: 01" in document.text
+
+
 def test_metadata_contains_expected_fields(
     taxonomy_record: ICDTaxonomyRecord,
 ):
