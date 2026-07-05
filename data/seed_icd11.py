@@ -30,7 +30,15 @@ def parse_bool(value: Optional[Any]) -> Optional[bool]:
     return None
 
 
+def clean_title(title: str) -> str:
+    import re
+
+    title = re.sub(r"^\s*(?:-\s*)+", "", title)
+    return title.strip()
+
+
 def seed_icd11_taxonomy():
+    stack = []  # (depth, title)
     print("🛡️ Rebuilding ICD-11 taxonomy database...")
 
     if not os.path.exists(CSV_FILE_PATH):
@@ -75,7 +83,10 @@ def seed_icd11_taxonomy():
 
         for row in reader:
             code = (row.get("Code") or "").strip()
-            title = (row.get("Title") or "").strip()
+            raw_title = row.get("Title") or ""
+            title = clean_title(raw_title)
+            visual_depth = len(raw_title) - len(raw_title.lstrip("- "))
+            depth = max(int(row.get("DepthInKind") or 0), visual_depth)
             class_kind = (row.get("ClassKind") or "").strip()
 
             if not title:
@@ -85,11 +96,19 @@ def seed_icd11_taxonomy():
             if not code or code == "_NOCODEASSIGNED":
                 continue
 
+            while stack and stack[-1][0] >= depth:
+                stack.pop()
+
+            parent_path = [x[1] for x in stack]
+            context_path = " → ".join(parent_path + [title]) if parent_path else title
+
+            stack.append((depth, title))
+
             record = ICDTaxonomyRecord(
                 code=code,
                 title=title,
                 class_kind=class_kind,
-                context_path=None,
+                context_path=context_path,
                 block_id=row.get("BlockId"),
                 chapter_no=row.get("ChapterNo"),
                 is_leaf=parse_bool(row.get("isLeaf")),
