@@ -1,6 +1,6 @@
 {
-  "next_index": 11,
-  "batch_size": 10,
+  "next_index": 8511,
+  "batch_size": 500,
   "total": 35660,
   "completed": false
 }

@@ -49,7 +49,7 @@ def test_contains_title(
 
     document = strategy.build(taxonomy_record)
 
-    assert taxonomy_record.title in document.text
+    assert f"Clinical Term: {taxonomy_record.title}" in document.text
 
 
 def test_contains_hierarchy(
@@ -60,7 +60,9 @@ def test_contains_hierarchy(
     document = strategy.build(taxonomy_record)
 
     assert taxonomy_record.context_path is not None
-    assert taxonomy_record.context_path in document.text
+    assert "Classification Hierarchy:" in document.text
+    assert "Certain infectious or parasitic diseases;" in document.text
+    assert "Intestinal infections due to Escherichia coli" in document.text
 
 
 def test_contains_classification(
@@ -85,11 +87,11 @@ def test_title_strips_leading_dashes():
 
     document = strategy.build(record)
 
-    assert "Cholera" in document.text
+    assert "Clinical Term: Cholera" in document.text
     assert "- - - Cholera" not in document.text
 
 
-def test_contains_block_and_chapter_details():
+def test_omits_irrelevant_metadata_from_embedding_text():
     strategy = StructuredProseRepresentation()
     record = ICDTaxonomyRecord(
         code="1A00",
@@ -97,12 +99,15 @@ def test_contains_block_and_chapter_details():
         class_kind="category",
         block_id="1A0",
         chapter_no="01",
+        grouping_1="BlockL1-1A0",
+        grouping_2="BlockL2-1A0",
     )
 
     document = strategy.build(record)
 
-    assert "Block: 1A0" in document.text
-    assert "Chapter: 01" in document.text
+    assert "Block:" not in document.text
+    assert "Grouping" not in document.text
+    assert "Chapter:" not in document.text
 
 
 def test_metadata_contains_expected_fields(
@@ -115,6 +120,7 @@ def test_metadata_contains_expected_fields(
     assert document.metadata["code"] == taxonomy_record.code
     assert document.metadata["title"] == taxonomy_record.title
     assert document.metadata["class_kind"] == taxonomy_record.class_kind
+    assert document.metadata["context_path"] == taxonomy_record.context_path
 
 
 def test_build_is_deterministic(

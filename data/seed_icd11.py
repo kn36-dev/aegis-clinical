@@ -1,55 +1,51 @@
 import csv
-import os
+import re
 import sqlite3
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Tuple
 
 from aegis.database.repositories.icd_repository import ICDRepository
 from aegis.database.repositories.models import ICDTaxonomyRecord
 
-CSV_FILE_PATH = "data/icd11_mms_simplified.csv"
+CSV_FILE_PATH = "data/smallerslice.csv"
 DB_FILE_PATH = "data/clinical_registry.db"
+
+
+# -----------------------------------------------------------------------------
+# HELPERS
+# -----------------------------------------------------------------------------
 
 
 def parse_bool(value: Optional[Any]) -> Optional[bool]:
     if value is None:
         return None
-
     if isinstance(value, bool):
         return value
-
     if isinstance(value, int):
         return bool(value)
-
     if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized == "true":
+        v = value.strip().lower()
+        if v == "true":
             return True
-        if normalized == "false":
+        if v == "false":
             return False
-
     return None
 
 
 def clean_title(title: str) -> str:
-    import re
+    return re.sub(r"^\s*(?:-\s*)+", "", title).strip()
 
-    title = re.sub(r"^\s*(?:-\s*)+", "", title)
-    return title.strip()
+
+# -----------------------------------------------------------------------------
+# SEEDER
+# -----------------------------------------------------------------------------
 
 
 def seed_icd11_taxonomy():
-    stack = []  # (depth, title)
     print("🛡️ Rebuilding ICD-11 taxonomy database...")
-
-    if not os.path.exists(CSV_FILE_PATH):
-        raise FileNotFoundError(f"Missing: {CSV_FILE_PATH}")
 
     conn = sqlite3.connect(DB_FILE_PATH)
     cursor = conn.cursor()
 
-    # ----------------------------
-    # RESET SCHEMA (source of truth)
-    # ----------------------------
     cursor.execute("DROP TABLE IF EXISTS icd11_taxonomy;")
 
     cursor.execute("""
@@ -76,7 +72,18 @@ def seed_icd11_taxonomy():
         );
     """)
 
+    # -----------------------------------------------------------------------------
+    # STATE (FIXED: DUAL STACK MODEL)
+    # -----------------------------------------------------------------------------
+
+    block_stack: List[Tuple[int, str]] = []
+    category_stack: List[Tuple[int, str]] = []
+
     records: List[ICDTaxonomyRecord] = []
+
+    # -----------------------------------------------------------------------------
+    # STREAM PROCESSING
+    # -----------------------------------------------------------------------------
 
     with open(CSV_FILE_PATH, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -85,44 +92,80 @@ def seed_icd11_taxonomy():
             code = (row.get("Code") or "").strip()
             raw_title = row.get("Title") or ""
             title = clean_title(raw_title)
-            visual_depth = len(raw_title) - len(raw_title.lstrip("- "))
-            depth = max(int(row.get("DepthInKind") or 0), visual_depth)
+
             class_kind = (row.get("ClassKind") or "").strip()
+            depth = int(row.get("DepthInKind") or 0)
+            block_id = row.get("BlockId")
 
-            if not title:
+            # ---------------------------------------------------------------------
+            # CHAPTER SKIP (root structural container)
+            # ---------------------------------------------------------------------
+            if class_kind == "chapter":
                 continue
 
-            # skip rows without real ICD codes if needed
-            if not code or code == "_NOCODEASSIGNED":
+            # ---------------------------------------------------------------------
+            # BLOCK LOGIC
+            # ---------------------------------------------------------------------
+            if class_kind == "block":
+                # blocks reset category context entirely
+                category_stack = []
+
+                # maintain block hierarchy using depth
+                block_stack = [(d, t) for (d, t) in block_stack if d < depth]
+                block_stack.append((depth, title))
+
+                context_path = " → ".join(t for _, t in block_stack)
+
+                print(f"[BLOCK] {code} depth={depth}")
+                print("       ", context_path)
+
+            # ---------------------------------------------------------------------
+            # CATEGORY LOGIC
+            # ---------------------------------------------------------------------
+            else:
+                # categories depend on BOTH:
+                # - current block context
+                # - category depth chain
+
+                # reset category stack if block context is empty (safety guard)
+                if not block_stack:
+                    category_stack = []
+
+                # maintain category hierarchy independently
+                category_stack = [(d, t) for (d, t) in category_stack if d < depth]
+                category_stack.append((depth, title))
+
+                context_path = " → ".join(
+                    [t for _, t in block_stack] + [t for _, t in category_stack]
+                )
+
+                print(f"[CAT] {code} depth={depth}")
+                print("     ", context_path)
+
+            # ---------------------------------------------------------------------
+            # STORE RECORD
+            # ---------------------------------------------------------------------
+            if not code or not title or code == "_NOCODEASSIGNED":
                 continue
 
-            while stack and stack[-1][0] >= depth:
-                stack.pop()
-
-            parent_path = [x[1] for x in stack]
-            context_path = " → ".join(parent_path + [title]) if parent_path else title
-
-            stack.append((depth, title))
-
-            record = ICDTaxonomyRecord(
-                code=code,
-                title=title,
-                class_kind=class_kind,
-                context_path=context_path,
-                block_id=row.get("BlockId"),
-                chapter_no=row.get("ChapterNo"),
-                is_leaf=parse_bool(row.get("isLeaf")),
-                is_residual=parse_bool(row.get("IsResidual")),
-                grouping_1=row.get("Grouping1"),
-                grouping_2=row.get("Grouping2"),
-                grouping_3=row.get("Grouping3"),
-                grouping_4=row.get("Grouping4"),
-                grouping_5=row.get("Grouping5"),
-                foundation_uri=row.get("Foundation URI"),
-                linearization_uri=row.get("Linearization (release) URI"),
+            records.append(
+                ICDTaxonomyRecord(
+                    code=code,
+                    title=title,
+                    class_kind=class_kind,
+                    context_path=context_path,
+                    block_id=block_id,
+                    chapter_no=row.get("ChapterNo"),
+                    is_leaf=parse_bool(row.get("isLeaf")),
+                    is_residual=parse_bool(row.get("IsResidual")),
+                    foundation_uri=row.get("Foundation URI"),
+                    linearization_uri=row.get("Linearization (release) URI"),
+                )
             )
 
-            records.append(record)
+    # -----------------------------------------------------------------------------
+    # PERSIST
+    # -----------------------------------------------------------------------------
 
     repo = ICDRepository(conn)
     repo.bulk_insert(records)

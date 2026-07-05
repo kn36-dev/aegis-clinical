@@ -4,6 +4,7 @@
 
 import re
 
+from aegis.common.logging import get_logger
 from aegis.database.repositories.models import ICDTaxonomyRecord
 from aegis.indexing.documents import (
     RepresentationDocument,
@@ -11,15 +12,21 @@ from aegis.indexing.documents import (
 )
 from aegis.indexing.representations.base import RepresentationStrategy
 
+logger = get_logger(__name__)
+
 
 class StructuredProseRepresentation(RepresentationStrategy):
     """
-    Produces a structured clinical prose representation.
+    Produces a compact structured clinical prose representation.
 
-    This is intentionally the only representation strategy used in V1.
+    The embedding text is intentionally limited to ontology-relevant details:
+    - ICD code
+    - normalized clinical term
+    - classification hierarchy
+    - classification kind
 
-    The formatting attempts to expose clinically meaningful information
-    while remaining natural language friendly for embedding models.
+    Irrelevant implementation details such as block_id, grouping, or chapter
+    are excluded from the text that will be embedded.
     """
 
     @property
@@ -39,37 +46,27 @@ class StructuredProseRepresentation(RepresentationStrategy):
     ) -> RepresentationDocument:
 
         normalized_title = self._normalize_title(record.title)
+        title_text = normalized_title or record.title or "[missing title]"
 
-        lines: list[str] = [
+        parts: list[str] = [
             f"ICD-11 Code: {record.code}",
-            f"Title: {normalized_title or record.title or '[missing title]'}",
+            f"Clinical Term: {title_text}",
         ]
 
         if record.context_path:
-            lines.append(f"Hierarchy: {record.context_path}")
+            hierarchy_text = record.context_path.replace(" > ", "; ")
+            parts.append(f"Classification Hierarchy: {hierarchy_text}")
 
         if record.class_kind:
-            lines.append(f"Classification: {record.class_kind}")
+            parts.append(f"Classification: {record.class_kind}")
 
-        if record.block_id:
-            lines.append(f"Block: {record.block_id}")
+        text = " ".join(parts)
 
-        if record.chapter_no:
-            lines.append(f"Chapter: {record.chapter_no}")
-
-        if record.is_leaf is not None:
-            lines.append(f"Is Leaf: {'yes' if record.is_leaf else 'no'}")
-
-        if record.is_residual is not None:
-            lines.append(f"Is Residual: {'yes' if record.is_residual else 'no'}")
-
-        if record.grouping_1:
-            lines.append(f"Grouping 1: {record.grouping_1}")
-
-        if record.grouping_2:
-            lines.append(f"Grouping 2: {record.grouping_2}")
-
-        text = "\n".join(lines)
+        logger.info(
+            "StructuredProse build | concept=%s | text=%s",
+            record.code,
+            text,
+        )
 
         return RepresentationDocument(
             concept_id=record.code,
@@ -77,14 +74,8 @@ class StructuredProseRepresentation(RepresentationStrategy):
             text=text,
             metadata={
                 "code": record.code,
-                "title": normalized_title or record.title or "",
+                "title": title_text,
                 "class_kind": record.class_kind,
                 "context_path": record.context_path,
-                "block_id": record.block_id,
-                "chapter_no": record.chapter_no,
-                "is_leaf": record.is_leaf,
-                "is_residual": record.is_residual,
-                "grouping_1": record.grouping_1,
-                "grouping_2": record.grouping_2,
             },
         )
