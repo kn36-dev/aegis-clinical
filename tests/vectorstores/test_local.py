@@ -1,4 +1,9 @@
-from aegis.indexing.documents import RepresentationDocument, RepresentationType, VectorDocument
+from aegis.indexing.documents import (
+    RepresentationDocument,
+    RepresentationMetadata,
+    RepresentationType,
+    VectorDocument,
+)
 from aegis.vectorstores.local import LocalVectorStore
 
 
@@ -7,7 +12,12 @@ def make_vector(concept_id: str) -> VectorDocument:
         concept_id=concept_id,
         representation_type=RepresentationType.STRUCTURED_PROSE,
         text="dummy text",
-        metadata={},
+        metadata=RepresentationMetadata(
+            code="code",
+            title="title",
+            representation_type=RepresentationType.STRUCTURED_PROSE,
+            embedded_text="",
+        ),
     )
 
     return VectorDocument(

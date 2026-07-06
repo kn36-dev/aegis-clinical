@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS trial_target_code (
     criterion_type TEXT NOT NULL CHECK (criterion_type IN ('INCLUSION', 'EXCLUSION')),
     PRIMARY KEY (trial_id, icd11_code),
     FOREIGN KEY (trial_id) REFERENCES clinical_trial(trial_id) ON DELETE CASCADE,
-    FOREIGN KEY (icd11_code) REFERENCES icd11_taxonomy_reference(code)
+    FOREIGN KEY (icd11_code) REFERENCES icd11_taxonomy(code)
 );
 
 -- EXPLANATION:

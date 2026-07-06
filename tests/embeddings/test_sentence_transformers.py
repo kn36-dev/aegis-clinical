@@ -1,5 +1,9 @@
 from aegis.embeddings.sentence_transformers import SentenceTransformersEmbeddingProvider
-from aegis.indexing.documents import RepresentationDocument, RepresentationType
+from aegis.indexing.documents import (
+    RepresentationDocument,
+    RepresentationMetadata,
+    RepresentationType,
+)
 
 
 def make_provider():
@@ -11,7 +15,12 @@ def test_embedding_shape():
         concept_id="test",
         representation_type=RepresentationType.STRUCTURED_PROSE,
         text="diabetes mellitus",
-        metadata={},
+        metadata=RepresentationMetadata(
+            code="code",
+            title="title",
+            representation_type=RepresentationType.STRUCTURED_PROSE,
+            embedded_text="",
+        ),
     )
     provider = make_provider()
     result = provider.embed(doc)
@@ -25,7 +34,12 @@ def test_embed_many_returns_same_count():
             concept_id=f"c{i}",
             representation_type=RepresentationType.STRUCTURED_PROSE,
             text=f"condition {i}",
-            metadata={},
+            metadata=RepresentationMetadata(
+                code="code",
+                title="title",
+                representation_type=RepresentationType.STRUCTURED_PROSE,
+                embedded_text="",
+            ),
         )
         for i in range(10)
     ]
@@ -41,13 +55,23 @@ def test_embed_many_alignment():
             concept_id="a",
             representation_type=RepresentationType.STRUCTURED_PROSE,
             text="hypertension",
-            metadata={},
+            metadata=RepresentationMetadata(
+                code="code",
+                title="title",
+                representation_type=RepresentationType.STRUCTURED_PROSE,
+                embedded_text="",
+            ),
         ),
         RepresentationDocument(
             concept_id="b",
             representation_type=RepresentationType.STRUCTURED_PROSE,
             text="diabetes",
-            metadata={},
+            metadata=RepresentationMetadata(
+                code="code",
+                title="title",
+                representation_type=RepresentationType.STRUCTURED_PROSE,
+                embedded_text="",
+            ),
         ),
     ]
     provider = make_provider()

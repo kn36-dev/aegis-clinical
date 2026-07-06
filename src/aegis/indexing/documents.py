@@ -25,7 +25,6 @@ SQLite, or any embedding/vector provider.
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -57,6 +56,16 @@ class RepresentationType(StrEnum):
 # ============================================================================
 
 
+class RepresentationMetadata(BaseModel):
+    code: str
+    title: str
+    context_path: str | None = None
+    chapter_number: str | None = None
+
+    representation_type: RepresentationType
+    embedded_text: str
+
+
 class RepresentationDocument(BaseModel):
     """
     Canonical artifact produced by a representation strategy.
@@ -77,10 +86,7 @@ class RepresentationDocument(BaseModel):
 
     text: str = Field(description="Canonical text that will be submitted to the embedding model.")
 
-    metadata: dict[str, Any] = Field(
-        default_factory=dict,
-        description=("Optional provider-agnostic metadata associated with this representation."),
-    )
+    metadata: RepresentationMetadata
 
 
 # ============================================================================

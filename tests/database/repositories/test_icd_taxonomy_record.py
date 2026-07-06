@@ -9,13 +9,11 @@ def test_icd_taxonomy_record_minimal_creation():
     record = ICDTaxonomyRecord(
         code="1A03.Z",
         title="Intestinal infections due to E. coli",
-        class_kind="category",
         context_path="A > B > C",
     )
 
     assert record.code == "1A03.Z"
     assert record.title == "Intestinal infections due to E. coli"
-    assert record.class_kind == "category"
     assert record.context_path is not None
     assert record.context_path.startswith("A")
 
@@ -24,7 +22,6 @@ def test_icd_taxonomy_record_immutability():
     record = ICDTaxonomyRecord(
         code="1A03",
         title="Test",
-        class_kind="category",
     )
 
     # Context manager elegantly handles expected exceptions
@@ -33,10 +30,3 @@ def test_icd_taxonomy_record_immutability():
     ):  # Best practice: replace 'Exception' with your specific error class
         record.title = "Modified"  # type: ignore
         pass
-
-
-def test_optional_fields_can_be_none():
-    record = ICDTaxonomyRecord(code="1A03", title="Test", class_kind="category")
-
-    assert record.block_id is None
-    assert record.grouping_1 is None

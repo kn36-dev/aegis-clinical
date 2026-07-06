@@ -40,7 +40,7 @@ class UpstashVectorStore(VectorStore):
                 (
                     document.representation.concept_id,
                     document.embedding,
-                    document.representation.metadata,
+                    document.representation.metadata.model_dump(),
                 )
             ]
         )
@@ -54,7 +54,7 @@ class UpstashVectorStore(VectorStore):
             (
                 document.representation.concept_id,
                 document.embedding,
-                document.representation.metadata,
+                document.representation.metadata.model_dump(),
             )
             for document in documents
         ]

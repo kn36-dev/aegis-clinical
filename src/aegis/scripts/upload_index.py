@@ -12,6 +12,7 @@ from aegis.embeddings.sentence_transformers import SentenceTransformersEmbedding
 from aegis.indexing.builders import RepresentationBuilder
 from aegis.indexing.pipeline import IndexingPipeline
 from aegis.indexing.representations.structured_prose import StructuredProseRepresentation
+from aegis.jobs.upload_job import CheckpointStore, UploadJob
 from aegis.vectorstores.upstash import UpstashVectorStore
 
 load_dotenv()
@@ -63,13 +64,11 @@ def main():
             doc.representation.metadata,
         )
 
-    from aegis.jobs.upload_job import CheckpointStore, UploadJob
-
     job = UploadJob(
         vector_store=vector_store,
         checkpoint_store=CheckpointStore(Path("./state/upload_checkpoint.json")),
-        batch_size=10,
-        max_documents_per_run=10,
+        batch_size=500,
+        max_documents_per_run=8000,
     )
 
     logger.info(

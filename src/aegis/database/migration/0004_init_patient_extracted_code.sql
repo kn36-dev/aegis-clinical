@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS patient_extracted_code (
     extraction_source TEXT NOT NULL,
     PRIMARY KEY (case_id, icd11_code),
     FOREIGN KEY (case_id) REFERENCES patient_case(case_id) ON DELETE CASCADE,
-    FOREIGN KEY (icd11_code) REFERENCES icd11_taxonomy_reference(code)
+    FOREIGN KEY (icd11_code) REFERENCES icd11_taxonomy(code)
 );
  
 -- Remember, here 1 icd11_code translates to 1 row

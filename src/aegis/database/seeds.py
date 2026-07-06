@@ -28,6 +28,22 @@ def _calculate_depth_and_clean_title(raw_title: str) -> tuple[int, str]:
     return depth, clean_title
 
 
+def _parse_bool(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return int(bool(value))
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "y"}:
+            return 1
+        if normalized in {"0", "false", "no", "n"}:
+            return 0
+    return None
+
+
 def seed_icd11(db_path: Path | str | None = None, csv_path: Path | str | None = None) -> int:
     """Parse the WHO ICD-11 CSV export and upsert it into the taxonomy table."""
     db_path = Path(db_path) if db_path else DEFAULT_DB_PATH
@@ -39,7 +55,7 @@ def seed_icd11(db_path: Path | str | None = None, csv_path: Path | str | None = 
 
     init_clinical_database(db_path=db_path, force_drop=False)
 
-    records: list[tuple[str, str, str, str]] = []
+    records: list[tuple[str, str, str, str, str | None, int | None, int | None]] = []
     current_path_stack: list[str] = []
 
     with csv_path.open(mode="r", encoding="utf-8", newline="") as handle:
@@ -63,26 +79,50 @@ def seed_icd11(db_path: Path | str | None = None, csv_path: Path | str | None = 
             full_context_path = " > ".join(current_path_stack)
 
             if code and code != "_NOCODEASSIGNED":
-                records.append((code, clean_title, class_kind, full_context_path))
+                chapter_no = (row.get("ChapterNo") or row.get("chapter_no") or "").strip() or None
+                is_leaf = _parse_bool(row.get("isLeaf") or row.get("is_leaf"))
+                is_residual = _parse_bool(row.get("IsResidual") or row.get("is_residual"))
+                records.append(
+                    (
+                        code,
+                        clean_title,
+                        class_kind,
+                        full_context_path,
+                        chapter_no,
+                        is_leaf,
+                        is_residual,
+                    )
+                )
 
     if not records:
         logger.info("No ICD-11 records parsed from %s", csv_path)
         return 0
 
     with get_db_connection(db_path) as conn:
-        for code, title, class_kind, context_path in records:
+        for code, title, class_kind, context_path, chapter_no, is_leaf, is_residual in records:
             conn.execute(
                 """
-                INSERT INTO icd11_taxonomy_reference (code, title, class_kind, context_path)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO icd11_taxonomy (
+                    code,
+                    title,
+                    class_kind,
+                    context_path,
+                    chapter_no,
+                    is_leaf,
+                    is_residual
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(code) DO UPDATE SET
                     title = excluded.title,
                     class_kind = excluded.class_kind,
-                    context_path = excluded.context_path;
+                    context_path = excluded.context_path,
+                    chapter_no = excluded.chapter_no,
+                    is_leaf = excluded.is_leaf,
+                    is_residual = excluded.is_residual;
                 """,
-                (code, title, class_kind, context_path),
+                (code, title, class_kind, context_path, chapter_no, is_leaf, is_residual),
             )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_icd11_code ON icd11_taxonomy_reference(code);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_icd11_code ON icd11_taxonomy(code);")
 
     logger.info("Ingested %d ICD-11 records into %s", len(records), db_path)
     return len(records)

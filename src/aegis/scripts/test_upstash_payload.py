@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from aegis.indexing.documents import (
     RepresentationDocument,
+    RepresentationMetadata,
     RepresentationType,
     VectorDocument,
 )
@@ -12,7 +13,12 @@ doc = VectorDocument(
         concept_id="A00",
         representation_type=RepresentationType.STRUCTURED_PROSE,
         text="dummy text",
-        metadata={"source": "test", "category": "icd11"},
+        metadata=RepresentationMetadata(
+            code="code",
+            title="title",
+            representation_type=RepresentationType.STRUCTURED_PROSE,
+            embedded_text="",
+        ),
     ),
     embedding=[0.1, 0.2, 0.3],
 )

@@ -46,27 +46,12 @@ class ICDRepository:
         """
 
         cursor = self._conn.cursor()
+        select_columns = self._get_select_columns()
+        if not select_columns:
+            return None
+
         cursor.execute(
-            """
-            SELECT
-                code,
-                title,
-                class_kind,
-                context_path,
-                block_id,
-                chapter_no,
-                is_leaf,
-                is_residual,
-                grouping_1,
-                grouping_2,
-                grouping_3,
-                grouping_4,
-                grouping_5,
-                foundation_uri,
-                linearization_uri
-            FROM icd11_taxonomy
-            WHERE code = ?;
-            """,
+            f"SELECT {', '.join(select_columns)} FROM icd11_taxonomy WHERE code = ?;",
             (code,),
         )
 
@@ -74,7 +59,7 @@ class ICDRepository:
         if not row:
             return None
 
-        return self._row_to_record(row)
+        return self._row_to_record(row, select_columns)
 
     def list_all(self, limit: Optional[int] = None) -> List[ICDTaxonomyRecord]:
         """
@@ -82,33 +67,18 @@ class ICDRepository:
         """
 
         cursor = self._conn.cursor()
+        select_columns = self._get_select_columns()
+        if not select_columns:
+            return []
 
-        query = """
-            SELECT
-                code,
-                title,
-                class_kind,
-                context_path,
-                block_id,
-                chapter_no,
-                is_leaf,
-                is_residual,
-                grouping_1,
-                grouping_2,
-                grouping_3,
-                grouping_4,
-                grouping_5,
-                foundation_uri,
-                linearization_uri
-            FROM icd11_taxonomy
-        """
+        query = f"SELECT {', '.join(select_columns)} FROM icd11_taxonomy"
 
         if limit:
             query += f" LIMIT {limit}"
 
         cursor.execute(query)
 
-        return [self._row_to_record(row) for row in cursor.fetchall()]
+        return [self._row_to_record(row, select_columns) for row in cursor.fetchall()]
 
     # ------------------------------------------------------------------------
     # WRITE OPERATIONS (used by seed pipeline, not runtime)
@@ -122,74 +92,107 @@ class ICDRepository:
         """
 
         cursor = self._conn.cursor()
+        insert_columns = self._get_insert_columns()
+        if not insert_columns:
+            return
 
-        cursor.executemany(
-            """
-            INSERT INTO icd11_taxonomy (
-                code,
-                title,
-                class_kind,
-                context_path,
-                block_id,
-                chapter_no,
-                is_leaf,
-                is_residual,
-                grouping_1,
-                grouping_2,
-                grouping_3,
-                grouping_4,
-                grouping_5,
-                foundation_uri,
-                linearization_uri
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """,
-            [
-                (
-                    r.code,
-                    r.title,
-                    r.class_kind,
-                    r.context_path,
-                    r.block_id,
-                    r.chapter_no,
-                    r.is_leaf,
-                    r.is_residual,
-                    r.grouping_1,
-                    r.grouping_2,
-                    r.grouping_3,
-                    r.grouping_4,
-                    r.grouping_5,
-                    r.foundation_uri,
-                    r.linearization_uri,
-                )
-                for r in records
-            ],
-        )
+        placeholders = ", ".join("?" for _ in insert_columns)
+        query = f"INSERT INTO icd11_taxonomy ({', '.join(insert_columns)}) VALUES ({placeholders});"
+
+        rows = []
+        for record in records:
+            values = []
+            for column in insert_columns:
+                if column == "code":
+                    values.append(record.code)
+                elif column == "title":
+                    values.append(record.title)
+                elif column == "context_path":
+                    values.append(record.context_path)
+                elif column == "chapter_no":
+                    values.append(record.chapter_no)
+                elif column == "is_leaf":
+                    values.append(self._coerce_bool(record.is_leaf))
+                elif column == "is_residual":
+                    values.append(self._coerce_bool(record.is_residual))
+                else:
+                    values.append(None)
+            rows.append(tuple(values))
+
+        cursor.executemany(query, rows)
         self._conn.commit()
 
     # ------------------------------------------------------------------------
     # INTERNAL MAPPING
     # ------------------------------------------------------------------------
 
-    def _row_to_record(self, row: tuple) -> ICDTaxonomyRecord:
+    def _get_select_columns(self) -> List[str]:
+        available_columns = self._get_available_columns()
+        return [
+            column
+            for column in (
+                "code",
+                "title",
+                "context_path",
+                "chapter_no",
+                "is_leaf",
+                "is_residual",
+            )
+            if column in available_columns
+        ]
+
+    def _get_insert_columns(self) -> List[str]:
+        available_columns = self._get_available_columns()
+        return [
+            column
+            for column in (
+                "code",
+                "title",
+                "context_path",
+                "chapter_no",
+                "is_leaf",
+                "is_residual",
+            )
+            if column in available_columns
+        ]
+
+    def _get_available_columns(self) -> List[str]:
+        cursor = self._conn.execute("PRAGMA table_info(icd11_taxonomy)")
+        rows = cursor.fetchall()
+        return [row[1] for row in rows]
+
+    def _coerce_bool(self, value: Optional[bool]) -> Optional[int]:
+        if value is None:
+            return None
+        return int(value)
+
+    def _row_to_record(self, row: tuple, selected_columns: List[str]) -> ICDTaxonomyRecord:
         """
         Maps SQLite row → ICDTaxonomyRecord
         """
 
+        values = {column: row[index] for index, column in enumerate(selected_columns)}
+
         return ICDTaxonomyRecord(
-            code=row[0],
-            title=row[1],
-            class_kind=row[2],
-            context_path=row[3],
-            block_id=row[4],
-            chapter_no=row[5],
-            is_leaf=row[6],
-            is_residual=row[7],
-            grouping_1=row[8],
-            grouping_2=row[9],
-            grouping_3=row[10],
-            grouping_4=row[11],
-            grouping_5=row[12],
-            foundation_uri=row[13],
-            linearization_uri=row[14],
+            code=values.get("code") or "",
+            title=values.get("title") or "",
+            context_path=values.get("context_path"),
+            chapter_no=values.get("chapter_no"),
+            is_leaf=self._coerce_optional_bool(values.get("is_leaf")),
+            is_residual=self._coerce_optional_bool(values.get("is_residual")),
         )
+
+    def _coerce_optional_bool(self, value: object) -> Optional[bool]:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, int):
+            return bool(value)
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "y"}:
+                return True
+            if normalized in {"0", "false", "no", "n"}:
+                return False
+        return None

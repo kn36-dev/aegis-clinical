@@ -22,7 +22,10 @@ class Icd11TaxonomyRecord(BaseModel):
     code: str
     title: str
     class_kind: str
-    context_path: str
+    context_path: str | None = None
+    chapter_no: str | None = None
+    is_leaf: bool | None = None
+    is_residual: bool | None = None
 
 
 class ClinicalRegistryRepository:
@@ -76,14 +79,18 @@ class ClinicalRegistryRepository:
         )
         self.conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS icd11_taxonomy_reference (
+            CREATE TABLE IF NOT EXISTS icd11_taxonomy (
                 code TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 class_kind TEXT NOT NULL,
-                context_path TEXT NOT NULL
+                context_path TEXT,
+                chapter_no TEXT,
+                is_leaf INTEGER,
+                is_residual INTEGER
             );
             """
         )
+        self.conn.execute("CREATE INDEX IF NOT EXISTS idx_icd11_code ON icd11_taxonomy(code);")
         self.conn.commit()
 
     def get_patient_case(self, patient_id: str) -> ClinicalMatchRecord | None:
@@ -161,14 +168,25 @@ class ClinicalRegistryRepository:
             raise RuntimeError("Repository connection is not initialized")
         self.conn.execute(
             """
-            INSERT INTO icd11_taxonomy_reference (code, title, class_kind, context_path)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO icd11_taxonomy (code, title, class_kind, context_path, chapter_no, is_leaf, is_residual)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(code) DO UPDATE SET
                 title = excluded.title,
                 class_kind = excluded.class_kind,
-                context_path = excluded.context_path;
+                context_path = excluded.context_path,
+                chapter_no = excluded.chapter_no,
+                is_leaf = excluded.is_leaf,
+                is_residual = excluded.is_residual;
             """,
-            (entry.code, entry.title, entry.class_kind, entry.context_path),
+            (
+                entry.code,
+                entry.title,
+                entry.class_kind,
+                entry.context_path,
+                entry.chapter_no,
+                int(entry.is_leaf) if entry.is_leaf is not None else None,
+                int(entry.is_residual) if entry.is_residual is not None else None,
+            ),
         )
         self._commit_if_needed()
 
@@ -176,12 +194,35 @@ class ClinicalRegistryRepository:
         if self.conn is None:
             raise RuntimeError("Repository connection is not initialized")
         row = self.conn.execute(
-            "SELECT code, title, class_kind, context_path FROM icd11_taxonomy_reference WHERE code = ?;",
+            "SELECT code, title, class_kind, context_path, chapter_no, is_leaf, is_residual FROM icd11_taxonomy WHERE code = ?;",
             (code,),
         ).fetchone()
         if row is None:
             return None
         return Icd11TaxonomyRecord.model_validate(dict(row))
+
+    def query_taxonomy_code(self, medical_term: str) -> str | None:
+        if self.conn is None:
+            raise RuntimeError("Repository connection is not initialized")
+        if not medical_term.strip():
+            return None
+
+        normalized_term = medical_term.strip()
+        row = self.conn.execute(
+            """
+            SELECT code, title, class_kind, context_path
+            FROM icd11_taxonomy
+            WHERE code = ?
+               OR title LIKE ?
+            ORDER BY CASE WHEN code = ? THEN 0 ELSE 1 END, title
+            LIMIT 1;
+            """,
+            (normalized_term, f"%{normalized_term}%", normalized_term),
+        ).fetchone()
+        if row is None:
+            return None
+
+        return f"{row['code']} | {row['title']} | {row['class_kind']}"
 
     def _commit_if_needed(self) -> None:
         if self.conn is None:

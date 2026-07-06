@@ -95,7 +95,6 @@ def seed_icd11_taxonomy():
 
             class_kind = (row.get("ClassKind") or "").strip()
             depth = int(row.get("DepthInKind") or 0)
-            block_id = row.get("BlockId")
 
             # ---------------------------------------------------------------------
             # CHAPTER SKIP (root structural container)
@@ -152,14 +151,10 @@ def seed_icd11_taxonomy():
                 ICDTaxonomyRecord(
                     code=code,
                     title=title,
-                    class_kind=class_kind,
                     context_path=context_path,
-                    block_id=block_id,
                     chapter_no=row.get("ChapterNo"),
                     is_leaf=parse_bool(row.get("isLeaf")),
                     is_residual=parse_bool(row.get("IsResidual")),
-                    foundation_uri=row.get("Foundation URI"),
-                    linearization_uri=row.get("Linearization (release) URI"),
                 )
             )
 

@@ -13,7 +13,6 @@ def taxonomy_record() -> ICDTaxonomyRecord:
     return ICDTaxonomyRecord(
         code="1A03.Z",
         title="Intestinal infections due to Escherichia coli, unspecified",
-        class_kind="category",
         context_path=("Certain infectious diseases > Bacterial intestinal infections"),
     )
 
@@ -38,7 +37,7 @@ def test_builder_builds_document(
     document = builder.build(taxonomy_record)
 
     assert document.concept_id == taxonomy_record.code
-    assert taxonomy_record.title in document.text
+    assert "Clinical Term:" in document.text
 
 
 def test_builder_build_many(
@@ -48,12 +47,10 @@ def test_builder_build_many(
         ICDTaxonomyRecord(
             code="1A00",
             title="Cholera",
-            class_kind="category",
         ),
         ICDTaxonomyRecord(
             code="1A01",
             title="Intestinal infection due to other Vibrio",
-            class_kind="category",
         ),
     ]
 

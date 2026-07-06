@@ -8,6 +8,7 @@ from aegis.common.logging import get_logger
 from aegis.database.repositories.models import ICDTaxonomyRecord
 from aegis.indexing.documents import (
     RepresentationDocument,
+    RepresentationMetadata,
     RepresentationType,
 )
 from aegis.indexing.representations.base import RepresentationStrategy
@@ -50,15 +51,20 @@ class StructuredProseRepresentation(RepresentationStrategy):
 
         parts: list[str] = [
             f"ICD-11 Code: {record.code}",
-            f"Clinical Term: {title_text}",
         ]
 
         if record.context_path:
-            hierarchy_text = record.context_path.replace(" > ", "; ")
+            nodes = [n.strip() for n in record.context_path.split("→")]
+
+            parents = nodes[:-1]
+
+            hierarchy_text = " | ".join(f"L{i + 1}: {node}" for i, node in enumerate(parents))
+
             parts.append(f"Classification Hierarchy: {hierarchy_text}")
 
-        if record.class_kind:
-            parts.append(f"Classification: {record.class_kind}")
+            parts.append(
+                f"Clinical Term: {record.title}",
+            )
 
         text = " ".join(parts)
 
@@ -72,10 +78,13 @@ class StructuredProseRepresentation(RepresentationStrategy):
             concept_id=record.code,
             representation_type=self.representation_type,
             text=text,
-            metadata={
-                "code": record.code,
-                "title": title_text,
-                "class_kind": record.class_kind,
-                "context_path": record.context_path,
-            },
+            metadata=RepresentationMetadata(
+                code=record.code,
+                title=title_text,
+                context_path=record.context_path,
+                chapter_number=record.chapter_no,
+                # Representation metadata
+                representation_type=self.representation_type,
+                embedded_text=text,
+            ),
         )

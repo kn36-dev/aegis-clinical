@@ -20,11 +20,14 @@ Pipeline
 
 from __future__ import annotations
 
-from aegis.database.repositories.models import ICDTaxonomyRecord
-from aegis.indexing.documents import RepresentationDocument
-from aegis.indexing.representations.base import (
-    RepresentationStrategy,
-)
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from aegis.database.repositories.models import ICDTaxonomyRecord
+    from aegis.indexing.documents import RepresentationDocument
+    from aegis.indexing.representations.base import (
+        RepresentationStrategy,
+    )
 
 
 class RepresentationBuilder:

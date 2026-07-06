@@ -38,26 +38,12 @@ class ICDTaxonomyRecord:
 
     code: str
     title: str
-    class_kind: str
-
     # Hierarchical and contextual metadata from ICD CSV
     context_path: Optional[str] = None
 
     # Optional structural metadata from ingestion layer
-    block_id: Optional[str] = None
     chapter_no: Optional[str] = None
 
     # Flags derived from CSV but preserved for downstream use
     is_leaf: Optional[bool] = None
     is_residual: Optional[bool] = None
-
-    # Relationship hints (from Grouping1-5 columns)
-    grouping_1: Optional[str] = None
-    grouping_2: Optional[str] = None
-    grouping_3: Optional[str] = None
-    grouping_4: Optional[str] = None
-    grouping_5: Optional[str] = None
-
-    # Source traceability
-    foundation_uri: Optional[str] = None
-    linearization_uri: Optional[str] = None

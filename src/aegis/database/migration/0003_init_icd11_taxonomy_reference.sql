@@ -5,11 +5,9 @@ CREATE TABLE icd11_taxonomy (
     title TEXT NOT NULL,
     class_kind TEXT NOT NULL,
     context_path TEXT,
-
     chapter_no TEXT,
-
     is_leaf INTEGER,
-    is_residual INTEGER,
+    is_residual INTEGER
 );
 
 
