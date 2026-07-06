@@ -6,7 +6,7 @@ from typing import Any, List, Optional, Tuple
 from aegis.database.repositories.icd_repository import ICDRepository
 from aegis.database.repositories.models import ICDTaxonomyRecord
 
-CSV_FILE_PATH = "data/smallerslice.csv"
+CSV_FILE_PATH = "data/only_medical_symptoms.csv"
 DB_FILE_PATH = "data/clinical_registry.db"
 
 
