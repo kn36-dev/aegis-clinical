@@ -84,3 +84,11 @@ def test_embed_many_alignment():
 def test_embed_many_empty():
     provider = make_provider()
     assert provider.embed_many([]) == []
+
+
+def test_embed_query_shape():
+    provider = make_provider()
+
+    embedding = provider.embed_query("diabetes mellitus")
+
+    assert len(embedding) == provider._embedding_dim

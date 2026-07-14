@@ -70,3 +70,6 @@ class SentenceTransformersEmbeddingProvider(EmbeddingProvider):
             )
             for doc, emb in zip(docs, embeddings, strict=True)
         ]
+
+    def embed_query(self, text: str) -> list[float]:
+        return self._model.encode(text).tolist()

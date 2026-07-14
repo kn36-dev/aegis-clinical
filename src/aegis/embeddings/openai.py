@@ -79,3 +79,12 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
             )
             for doc, item in zip(documents, response.data, strict=True)
         ]
+
+    def embed_query(self, text: str) -> list[float]:
+
+        response = self._client.embeddings.create(
+            model=self._model,
+            input=text,
+        )
+
+        return response.data[0].embedding

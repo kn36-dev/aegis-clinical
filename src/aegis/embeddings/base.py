@@ -53,3 +53,18 @@ class EmbeddingProvider(ABC):
         """
 
         return [self.embed(document) for document in documents]
+
+    @abstractmethod
+    def embed_query(self, text: str) -> list[float]:
+        """
+        Embed a single runtime query string into a vector representation.
+
+        Distinct from `embed()`/`embed_many()`, which operate on the
+        offline indexing pipeline's `RepresentationDocument` artifacts.
+        A runtime clinical query has no ICD concept identity, so it is
+        embedded directly from its normalized text rather than being
+        wrapped in a synthetic `RepresentationDocument`. The same
+        provider implementation backs both flows to guarantee identical
+        vector space semantics between indexing and retrieval.
+        """
+        raise NotImplementedError
