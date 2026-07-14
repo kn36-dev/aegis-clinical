@@ -6,6 +6,7 @@
 
 # My own project journal
 .memory/
+CLAUDE.md
 
 .venv/
 __pycache__/

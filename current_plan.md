@@ -1,146 +1,314 @@
-# Aegis Clinical — Implementation Roadmap
+# AEGIS Clinical — Implementation Roadmap (Architectural Edition)
 
-# Phase 3 — Prompt Definitions
+## Objective
 
-Separate prompt engineering from orchestration.
+AEGIS is a reference implementation demonstrating production-grade AI systems engineering through deterministic workflow orchestration, bounded AI reasoning, semantic retrieval, structured validation, and Human-in-the-Loop (HITL) decision making.
 
-```
-src/aegis/prompts/
+The implementation order deliberately follows architectural dependencies rather than framework dependencies. Every phase establishes a stable abstraction before introducing technologies that depend upon it.
 
-    symptom_extraction.py
+-------------------------------------------------------------------------------
+Phase 0 — Foundation & Infrastructure
+-------------------------------------------------------------------------------
 
-    icd_reasoning.py
+Goal:
 
-    trial_matching.py
-```
+Establish deterministic application infrastructure.
 
-Each file exports only prompt templates.
+Complete:
 
-No API calls.
+✓ Typed application configuration
+✓ Dependency injection
+✓ SQLite checkpoint database
+✓ Upstash Vector client
+✓ Upstash Redis client
+✓ FastAPI lifespan
+✓ Logging
+✓ Environment configuration
 
----
+Remaining:
 
-# Phase 4 — CrewAI Layer
+• Remove duplicated LLM dependency
+• Consolidate chat model provider
+• Verify dependency wiring
 
-Now create the reasoning layer.
+Deliverable:
 
-```
-src/aegis/crew/
+A deterministic application shell capable of running without AI logic.
 
-    agents.py
+-------------------------------------------------------------------------------
+Phase 1 — Offline Knowledge Compilation
+-------------------------------------------------------------------------------
 
-    tasks.py
+Goal:
 
-    crews.py
-```
+Prepare the immutable medical knowledge used during runtime.
 
-Initially implement one specialist:
+Pipeline:
 
-```
-ClinicalReasoningCrew
-
-↓
-
-ClinicalReasoningAgent
-```
-
-Internally this agent performs:
-
-* symptom extraction
-* interpretation
-* ICD suggestion preparation
-
-Future specialist agents can later replace portions of this reasoning.
-
----
-
-# Phase 5 — LangGraph State
-
-Create the workflow state.
-
-```
-src/aegis/graph/
-
-    state.py
-```
-
-Example state contains:
-
-* case_id
-* raw_note
-* normalized_note
-* embedding
-* candidate_icd_codes
-* structured_output
-* physician_review
-* final_codes
-
----
-
-# Phase 6 — LangGraph Nodes
-
-Implement each workflow step independently.
-
-```
-src/aegis/graph/nodes/
-
-    normalize.py
-
-    redis_lookup.py
-
-    embed_note.py
-
-    taxonomy_lookup.py
-
-    crew_reasoning.py
-
-    physician_review.py
-
-    sqlite_write.py
-
-    redis_update.py
-```
-
-Each node should have exactly one responsibility.
-
----
-
-# Phase 7 — Graph Assembly
-
-Connect the nodes.
-
-```
-src/aegis/graph/
-
-    builder.py
-```
-
-Resulting workflow:
-
-```
-Normalize Note
+WHO ICD Dataset
 
 ↓
 
-Redis Cache Lookup
+SQLite Taxonomy
 
 ↓
 
-Cache Hit?
- ├── Yes → Return Cached Result
- └── No
+RepresentationBuilder
 
 ↓
 
-Embedding Generation
+Embedding Provider
 
 ↓
 
-Taxonomy Lookup
+Upstash Vector
+
+Responsibilities:
+
+• Seed ICD taxonomy
+• Build semantic representations
+• Generate embeddings
+• Upload vectors
+• Verify retrieval quality
+
+Deliverable:
+
+A complete read-only semantic retrieval index.
+
+-------------------------------------------------------------------------------
+Phase 2 — Runtime Domain Language
+-------------------------------------------------------------------------------
+
+Goal:
+
+Define the canonical runtime contracts.
+
+Business Domain
+
+• ClinicalNote
+• ClinicalDecision
+
+Processing Contracts
+
+• NormalizedClinicalNote
+• RetrievalRequest
+• RetrievalResult
+• ReasoningContext
+• CodingRecommendation
+
+Workflow
+
+• LangGraph State
+
+Principles:
+
+• Immutable
+• Technology independent
+• Framework independent
+• Business-oriented
+
+Deliverable:
+
+The ubiquitous runtime language spoken by every subsystem.
+
+-------------------------------------------------------------------------------
+Phase 3 — Application Services
+-------------------------------------------------------------------------------
+
+Goal:
+
+Implement deterministic business services that transform runtime contracts.
+
+Examples:
+
+ClinicalNote
 
 ↓
 
-CrewAI Clinical Reasoning
+NormalizationService
+
+↓
+
+NormalizedClinicalNote
+
+↓
+
+RetrievalService
+
+↓
+
+RetrievalResult
+
+↓
+
+ContextAssembler
+
+↓
+
+ReasoningContext
+
+Each service owns exactly one responsibility.
+
+No orchestration.
+
+No AI.
+
+No LangGraph.
+
+Deliverable:
+
+Composable deterministic application logic.
+
+-------------------------------------------------------------------------------
+Phase 4 — Persistence Layer
+-------------------------------------------------------------------------------
+
+Goal:
+
+Implement repositories and storage abstractions.
+
+SQLite
+
+• Clinical repositories
+• ICD repository
+• Decision repository
+
+Redis
+
+• Deterministic cache
+
+Vector
+
+• Semantic retrieval
+
+Repositories expose business operations rather than SQL.
+
+Deliverable:
+
+Technology-specific persistence hidden behind stable interfaces.
+
+-------------------------------------------------------------------------------
+Phase 5 — Prompt Layer
+-------------------------------------------------------------------------------
+
+Goal:
+
+Define reusable reasoning instructions.
+
+Prompts become versioned assets.
+
+Examples:
+
+Clinical reasoning
+
+Evidence extraction
+
+Ranking strategy
+
+Prompt engineering remains completely isolated from execution.
+
+Deliverable:
+
+Version-controlled reasoning specifications.
+
+-------------------------------------------------------------------------------
+Phase 6 — PydanticAI Structured Inference
+-------------------------------------------------------------------------------
+
+Goal:
+
+Define deterministic AI boundaries.
+
+Responsibilities:
+
+• Structured output schemas
+• Validation
+• Retry handling
+• Output normalization
+
+Every LLM interaction begins and ends with strongly typed contracts.
+
+Deliverable:
+
+Deterministic probabilistic boundaries.
+
+-------------------------------------------------------------------------------
+Phase 7 — CrewAI Reasoning Layer
+-------------------------------------------------------------------------------
+
+Goal:
+
+Encapsulate domain reasoning.
+
+Current design intentionally uses one specialist agent.
+
+Responsibilities:
+
+ReasoningContext
+
+↓
+
+Clinical Reasoning Agent
+
+↓
+
+CodingRecommendation
+
+CrewAI owns reasoning only.
+
+CrewAI never owns workflow.
+
+Future specialist agents can be introduced without affecting orchestration.
+
+Deliverable:
+
+A stable reasoning boundary.
+
+-------------------------------------------------------------------------------
+Phase 8 — LangGraph Orchestration
+-------------------------------------------------------------------------------
+
+Goal:
+
+Connect deterministic services into a resumable workflow.
+
+Nodes transform one runtime contract into another.
+
+Example:
+
+ClinicalNote
+
+↓
+
+Normalize Node
+
+↓
+
+NormalizedClinicalNote
+
+↓
+
+Retrieval Node
+
+↓
+
+RetrievalResult
+
+↓
+
+Context Assembly
+
+↓
+
+ReasoningContext
+
+↓
+
+CrewAI Node
+
+↓
+
+CodingRecommendation
 
 ↓
 
@@ -148,160 +316,248 @@ Human Review
 
 ↓
 
-SQLite Persistence
+ClinicalDecision
 
 ↓
 
-Redis Cache Update
+Persistence
 
-↓
+LangGraph owns:
 
-Return Response
-```
+• execution order
+• retries
+• checkpointing
+• interrupts
+• state recovery
 
----
+Deliverable:
 
-# Phase 8 — FastAPI Integration
+Deterministic workflow orchestration.
 
-Wire the workflow into the API.
+-------------------------------------------------------------------------------
+Phase 9 — API Layer
+-------------------------------------------------------------------------------
 
-```
-src/aegis/api/routers/
+Goal:
 
-    clinical.py
-```
+Expose the orchestration through FastAPI.
 
-Endpoint:
+Endpoints:
 
-```
 POST /clinical/ingest
-```
 
-This endpoint should:
+POST /clinical/{thread_id}/approve
 
-* create WorkflowState
-* invoke LangGraph
-* return the workflow result
+GET /clinical/pending
 
----
+GET /clinical/{case_id}
 
-# Phase 9 — SQLite Repository Layer
+The API translates HTTP requests into runtime contracts.
 
-Avoid raw SQL inside graph nodes.
+It contains no business logic.
 
-```
-src/aegis/database/
+Deliverable:
 
-    repositories/
+Framework-independent application interface.
 
-        patient_repository.py
+-------------------------------------------------------------------------------
+Phase 10 — Observability
+-------------------------------------------------------------------------------
 
-        icd_repository.py
+Goal:
 
-        review_repository.py
-```
+Instrument every architectural boundary.
 
-Nodes should call repositories instead of executing SQL directly.
+Examples:
 
----
+OpenTelemetry
 
-# Phase 10 — Upstash Layer
+Trace IDs
 
-Create thin wrappers around the cloud services.
+Checkpoint correlation
 
-```
-src/aegis/vector/
+Token usage
 
-    taxonomy_lookup.py
+Retrieval latency
 
-src/aegis/cache/
+Reasoning latency
 
-    semantic_cache.py
-```
+Node execution timing
 
-These modules encapsulate all external interactions with Upstash Vector and Redis.
+Similarity statistics
 
----
+Deliverable:
 
-# Phase 11 — Evaluation Suite
+Complete execution visibility.
 
-Keep evaluations separate from tests.
+-------------------------------------------------------------------------------
+Phase 11 — Evaluation Framework
+-------------------------------------------------------------------------------
 
-```
-evals/
+Goal:
 
-    symptom_extraction/
+Measure AI quality independently from software correctness.
 
-    icd_accuracy/
+Datasets
 
-    regression/
+Golden physician cases
 
-    hallucination/
-```
+Synthetic scenarios
 
-These measure AI quality rather than software correctness.
+Regression datasets
 
----
+Metrics
 
-# Phase 12 — Integration Tests
+Top-K Recall
 
-Only after all components exist.
+MRR
 
-```
-tests/
+Prompt comparison
 
-    integration/
+Recommendation agreement
 
-        test_clinical_pipeline.py
+Physician correction rate
 
-        test_hitl.py
+Hallucination rate
 
-        test_trial_matching.py
-```
+Retrieval quality
 
-These exercise the complete workflow end-to-end.
+Grounded evidence quality
 
----
+Deliverable:
 
-# Final Architecture
+Evaluation-driven AI development.
 
-```
-React
+-------------------------------------------------------------------------------
+Phase 12 — Testing Strategy
+-------------------------------------------------------------------------------
 
-↓
+Unit Tests
+
+Deterministic services
+
+Repositories
+
+Utilities
+
+Normalization
+
+Contract validation
+
+Integration Tests
+
+Complete orchestration
+
+Checkpoint recovery
+
+HITL resume
+
+Persistence
+
+Contract invariants
+
+Evaluation
+
+Independent AI benchmarking
+
+Deliverable:
+
+Confidence in both deterministic software and probabilistic AI behaviour.
+
+-------------------------------------------------------------------------------
+Phase 13 — Documentation & Architecture
+-------------------------------------------------------------------------------
+
+Goal:
+
+Transform the repository into a reference implementation.
+
+Documentation includes:
+
+Architectural Decision Records (ADRs)
+
+Runtime domain language
+
+Business contracts
+
+Processing contracts
+
+Tradeoffs
+
+Security considerations
+
+Evaluation methodology
+
+Failure modes
+
+Recovery strategy
+
+Prompt philosophy
+
+Repository walkthrough
+
+The repository should teach architecture rather than merely present code.
+
+-------------------------------------------------------------------------------
+Final Architecture
+-------------------------------------------------------------------------------
+
+                          React UI
+                              │
+                              ▼
+                          FastAPI
+                              │
+                              ▼
+                    Runtime Domain Language
+                              │
+             ┌────────────────┼────────────────┐
+             ▼                ▼                ▼
+     Deterministic      CrewAI Reasoning   Persistence
+       Services               │            Repositories
+             │                ▼                │
+             │         PydanticAI             │
+             │                │                │
+             └──────────── LangGraph ──────────┘
+                              │
+                 SQLite   Redis   Upstash Vector
+
+Architectural Responsibilities
 
 FastAPI
+→ HTTP translation
 
-↓
+Runtime Domain Contracts
+→ System language
 
-LangGraph
-
-↓
+Deterministic Services
+→ Business transformations
 
 CrewAI
-
-↓
+→ Clinical reasoning
 
 PydanticAI
+→ Structured inference
 
-↓
-
-Groq
-
-↓
+LangGraph
+→ Workflow orchestration
 
 SQLite
-│
-├── Upstash Vector
-└── Upstash Redis
-```
+→ Durable business truth
 
-Each layer owns a single responsibility:
+Redis
+→ Deterministic cache
 
-* FastAPI → API surface
-* LangGraph → workflow orchestration
-* CrewAI → clinical reasoning
-* PydanticAI → structured inference
-* SQLite → authoritative persistence
-* Upstash Vector → semantic taxonomy retrieval
-* Upstash Redis → deterministic cache
+Upstash Vector
+→ Semantic candidate retrieval
+
+Observability
+→ System introspection
+
+Evaluation
+→ AI quality measurement
+
+The architectural centre of AEGIS is not LangGraph, CrewAI, or any individual framework.
+
+The architectural centre is the Runtime Domain Language.
+
+Every framework exists solely to transform, validate, transport, or persist those contracts while preserving deterministic system behaviour.

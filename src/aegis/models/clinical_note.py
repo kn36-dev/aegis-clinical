@@ -1,24 +1,28 @@
 # ClinicalNote
-
+#
+# Shape defined by runtime_domain_contracts/clinical_note.md (authoritative).
+#
 # Owns
-
-# note_id
+#
+# case_id
 # patient_id
-# physician_id
-# raw text
-# timestamp
-
+# content_reference
+# created_at
+#
 # Should not contain
-
+#
 # extracted symptoms
 # ICD codes
+# raw clinical text (referenced via content_reference, not stored inline)
 
 from __future__ import annotations
 
 from datetime import datetime
 from uuid import UUID
 
-from aegis.models.base import ClinicalText, DomainModel
+from pydantic import Field
+
+from aegis.models.base import DomainModel
 
 
 class ClinicalNote(DomainModel):
@@ -27,11 +31,13 @@ class ClinicalNote(DomainModel):
 
     This model represents only the source document that enters the AI
     pipeline. It intentionally contains no extracted symptoms,
-    diagnoses, reasoning, or workflow state.
+    diagnoses, reasoning, or workflow state, and no inline raw text —
+    ``content_reference`` is an opaque pointer to the encrypted clinical
+    note contents, owned by the domain rather than by the storage
+    implementation behind it.
     """
 
-    note_id: UUID
+    case_id: UUID
     patient_id: UUID
-    physician_id: UUID
-    raw_text: ClinicalText
+    content_reference: str = Field(min_length=1)
     created_at: datetime
