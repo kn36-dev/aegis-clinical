@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
@@ -257,7 +259,7 @@ def make_submission() -> ClinicalNoteSubmission:
     )
 
 
-def make_config() -> dict:
+def make_config() -> RunnableConfig:
     return {"configurable": {"thread_id": str(uuid4())}}
 
 
@@ -414,10 +416,11 @@ class TestCacheHit:
         )
         submission = make_submission()
 
-        final_state: AegisWorkflowState = asyncio.run(
-            graph.ainvoke({"submission": submission}, config=make_config())
+        final_state = cast(
+            AegisWorkflowState,
+            asyncio.run(graph.ainvoke({"submission": submission}, config=make_config())),
         )
-
+        assert "clinical_decision" in final_state
         assert final_state["clinical_decision"] == cached_decision
         assert len(cache_service.lookup_calls) == 1
         assert retrieval_service.calls == []
