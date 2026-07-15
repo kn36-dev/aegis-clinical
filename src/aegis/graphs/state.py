@@ -1,17 +1,23 @@
 """
 AegisWorkflowState
 
-LangGraph runtime state for the AEGIS deterministic preparation graph.
+LangGraph runtime state for the AEGIS workflow graph.
 
 Carries only the immutable domain artifacts produced by the completed
 application services along the path
 ``ClinicalNoteSubmission -> ClinicalNote -> NormalizedClinicalNote ->
-RetrievalResult -> ReasoningContext``. LangGraph checkpoints this state
-by serializing it, so it must hold domain models only -- never service
-instances, repositories, database connections, or LLM clients.
+[cache hit: ClinicalDecision] | [cache miss: RetrievalResult ->
+ReasoningContext -> CodingRecommendation -> PhysicianDecisionSubmission
+-> ClinicalDecision]``. LangGraph checkpoints this state by serializing
+it, so it must hold domain models only -- never service instances,
+repositories, database connections, or LLM clients.
 
 Only ``submission`` is required on entry; every other field is filled in
-progressively by the node that produces it.
+progressively by the node that produces it. ``physician_decision_submission``
+is the one field not produced by a node's return value in the normal
+sense -- it is written externally via ``update_state``/``Command(resume=...)``
+when ``human_review_pending`` is resumed (see
+``aegis.graphs.nodes.human_review``).
 """
 
 from __future__ import annotations
@@ -23,10 +29,13 @@ from typing import Any, NotRequired, Protocol, TypedDict
 # StateGraph._add_schema), so these names must exist in this module's
 # runtime namespace -- moving them under `if TYPE_CHECKING:` breaks graph
 # construction even though ruff's TCH rule would otherwise suggest it.
+from aegis.models.clinical_decision import ClinicalDecision  # noqa: TCH001
 from aegis.models.clinical_note import ClinicalNote  # noqa: TCH001
+from aegis.models.coding_recommendation import CodingRecommendation  # noqa: TCH001
 from aegis.models.normalized_clinical_note import NormalizedClinicalNote  # noqa: TCH001
 from aegis.models.reasoning_context import ReasoningContext  # noqa: TCH001
 from aegis.models.retrieval import RetrievalResult  # noqa: TCH001
+from aegis.services.clinical_decision_service import PhysicianDecisionSubmission  # noqa: TCH001
 from aegis.services.clinical_note_service import ClinicalNoteSubmission  # noqa: TCH001
 
 
@@ -36,6 +45,9 @@ class AegisWorkflowState(TypedDict):
     normalized_note: NotRequired[NormalizedClinicalNote]
     retrieval_result: NotRequired[RetrievalResult]
     reasoning_context: NotRequired[ReasoningContext]
+    coding_recommendation: NotRequired[CodingRecommendation]
+    physician_decision_submission: NotRequired[PhysicianDecisionSubmission]
+    clinical_decision: NotRequired[ClinicalDecision]
 
 
 class WorkflowNode(Protocol):

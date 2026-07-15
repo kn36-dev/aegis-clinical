@@ -2,11 +2,11 @@
 
 ## Purpose
 
-`PersistenceService` owns the business capability of materializing authoritative clinical truth into all required durable and derived storage representations while preserving consistency.
+`PersistenceService` owns the business capability of materializing authoritative clinical truth into durable storage.
 
 Its responsibility is:
 
-> "Given an authoritative ClinicalDecision, ensure that institutional clinical truth is durably preserved across required storage projections."
+> "Given an authoritative ClinicalDecision, ensure that institutional clinical truth is durably preserved."
 
 PersistenceService does not create truth.
 
@@ -19,11 +19,11 @@ It preserves truth that has already been established by physician approval.
 PersistenceService represents the boundary between:
 
 ```
-Business Truth
+Authoritative Clinical Truth
 
 ↓
 
-Physical Storage Representations
+Durable Storage Representation
 ```
 
 The service translates:
@@ -34,10 +34,6 @@ ClinicalDecision
 ↓
 
 Durable Records
-
-+
-
-Derived Projections
 ```
 
 Examples:
@@ -51,18 +47,14 @@ ClinicalDecision Repository
 
 ↓
 
-Patient Extracted Codes
-
-↓
-
 Audit Records
 
 ↓
 
-Cache Projection
+Patient Clinical History
 ```
 
-The service owns persistence orchestration, not business interpretation.
+The service owns durable persistence orchestration, not business interpretation.
 
 ---
 
@@ -75,6 +67,14 @@ The service owns persistence orchestration, not business interpretation.
 The immutable authoritative clinical decision produced by `ClinicalDecisionService`.
 
 This is the only business artifact required to establish persistence.
+
+PersistenceService assumes:
+
+- physician approval has already occurred.
+- recommendation validation has already occurred.
+- the decision represents accepted institutional truth.
+
+PersistenceService does not re-evaluate clinical correctness.
 
 ---
 
@@ -96,15 +96,14 @@ These are operational concerns, not business truth.
 
 ## PersistenceResult
 
-A structured result describing the persistence outcome.
+A structured result describing the durable persistence outcome.
 
 Typical fields:
 
 - success status
 - transaction identifier
 - persisted entities
-- projection status
-- timestamps
+- persistence timestamp
 - failure information if applicable
 
 This enables:
@@ -113,6 +112,15 @@ This enables:
 - debugging.
 - operational monitoring.
 - deterministic workflow handling.
+
+PersistenceResult describes durable storage outcome only.
+
+It does not describe:
+
+- cache status.
+- retrieval status.
+- AI reasoning status.
+- workflow state.
 
 ---
 
@@ -124,33 +132,36 @@ Persist authoritative clinical truth into system-of-record storage.
 
 Examples:
 
-- clinical decision records.
-- patient extracted ICD codes.
+- ClinicalDecision records.
+- patient clinical history.
+- physician approval records.
 - audit history.
 
 ---
 
-## 2. Projection Management
+## 2. Repository Coordination
 
-Create and maintain derived representations required for application performance.
+Coordinate required durable repositories needed to preserve clinical truth.
 
 Examples:
 
 ```
-ClinicalDecision
+ClinicalDecisionRepository
 
-↓
+AuditRepository
 
-Redis clinical memory projection
+PatientClinicalRecordRepository
 ```
 
-Derived projections must never become the source of truth.
+Repositories own technology details.
+
+PersistenceService owns the persistence workflow.
 
 ---
 
 ## 3. Transaction Coordination
 
-Coordinate persistence operations required to preserve consistency.
+Coordinate durable persistence operations required to preserve consistency.
 
 Example:
 
@@ -163,74 +174,93 @@ Persist ClinicalDecision
 
 ↓
 
-Persist extracted ICD codes
+Persist audit record
 
 ↓
 
-Persist audit records
+Persist patient clinical history
 
 ↓
 
 COMMIT
-
-↓
-
-Update derived projections
 ```
+
+Transaction handling belongs to the durable persistence boundary.
 
 ---
 
-# Repository Boundary
+# Cache Boundary
 
-PersistenceService should not directly depend on database technologies.
+## CacheService Owns Cache Persistence
 
-It depends on repository abstractions.
+Cache updates are intentionally outside PersistenceService ownership.
 
-Examples:
-
-```
-ClinicalDecisionRepository
-
-PatientExtractedCodeRepository
-
-AuditRepository
-
-ClinicalCacheRepository
-```
-
-Repositories own technology details.
-
-PersistenceService owns orchestration.
-
----
-
-# Redis Projection Boundary
-
-Redis is considered a derived projection.
-
-PersistenceService owns:
-
-- determining when cache updates occur.
-- generating required persistence projections.
-- coordinating cache repository operations.
-
-It does not treat Redis as authoritative storage.
-
-Authority remains:
+The architecture separates:
 
 ```
-SQLite / durable storage
+Durable Truth
 
 ↓
 
-Redis projection
+PersistenceService
+
 ```
+
+from:
+
+```
+Knowledge Reuse
+
+↓
+
+CacheService
+```
+
+The cache is a derived deterministic knowledge reuse mechanism.
+
+It is not part of durable persistence.
+
+---
+
+The workflow orchestration layer owns ordering:
+
+```
+ClinicalDecision
+
+↓
+
+PersistenceService.persist()
+
+↓
+
+Successful durable commit
+
+↓
+
+CacheService.store()
+```
+
+This ordering ensures:
+
+- only persisted truth enters the cache.
+- failed persistence cannot create reusable knowledge.
+- cache lifecycle remains independent from storage technology.
+
+---
+
+PersistenceService must never:
+
+- call CacheService.
+- write Redis directly.
+- generate cache keys.
+- determine cache invalidation policy.
+- coordinate cache refresh.
 
 ---
 
 # Failure Handling
 
-PersistenceService must distinguish:
+PersistenceService distinguishes durable storage failures.
 
 ## Durable Storage Failure
 
@@ -242,13 +272,19 @@ SQLite transaction failure
 
 Result:
 
-Persistence operation fails.
+```
+Persistence fails
+```
 
-No authoritative truth should be considered persisted.
+The ClinicalDecision is not considered durably preserved.
+
+The caller/workflow decides retry or recovery behavior.
 
 ---
 
-## Derived Projection Failure
+## Cache Failure
+
+Not handled by PersistenceService.
 
 Example:
 
@@ -257,20 +293,16 @@ SQLite success
 
 ↓
 
-Redis failure
+CacheService failure
 ```
 
 Result:
 
-Durable truth remains committed.
+Durable truth remains valid.
 
-The projection should be:
+Cache recovery is handled by the cache subsystem.
 
-- marked incomplete,
-- retried,
-- reconciled later.
-
-Derived storage failure must never invalidate authoritative clinical truth.
+A cache failure must never invalidate authoritative clinical truth.
 
 ---
 
@@ -285,7 +317,7 @@ Same ClinicalDecision
 
 +
 
-Same storage state
+Same durable storage state
 ```
 
 it should produce the same persistence outcome.
@@ -296,6 +328,48 @@ This supports:
 - recovery.
 - auditing.
 - testing.
+
+PersistenceService does not introduce:
+
+- probabilistic decisions.
+- AI reasoning.
+- semantic matching.
+
+---
+
+# Repository Boundary
+
+PersistenceService should not directly depend on database technologies.
+
+It depends on repository abstractions.
+
+Examples:
+
+```
+ClinicalDecisionRepository
+
+AuditRepository
+
+PatientClinicalRecordRepository
+```
+
+The following are forbidden dependencies:
+
+```
+SQLite implementation details
+
+Redis clients
+
+Vector databases
+
+Embedding providers
+
+LLM clients
+```
+
+Repositories own infrastructure concerns.
+
+PersistenceService owns durable persistence behavior.
 
 ---
 
@@ -308,6 +382,7 @@ PersistenceService does not:
 - interpret ICD codes.
 - evaluate recommendations.
 - classify physician decisions.
+- modify ClinicalDecision contents.
 
 ---
 
@@ -319,6 +394,7 @@ PersistenceService does not know:
 - CrewAI.
 - prompts.
 - reasoning workflows.
+- confidence scores.
 
 ---
 
@@ -329,6 +405,19 @@ PersistenceService does not know:
 - embeddings.
 - vector databases.
 - semantic search.
+- retrieval candidates.
+
+---
+
+## Cache Systems
+
+PersistenceService does not own:
+
+- Redis.
+- cache keys.
+- cache expiration.
+- cache invalidation.
+- knowledge reuse.
 
 ---
 
@@ -337,8 +426,9 @@ PersistenceService does not know:
 PersistenceService does not own:
 
 - LangGraph execution.
-- retries at workflow level.
 - human review routing.
+- workflow retries.
+- orchestration ordering.
 
 ---
 
@@ -349,10 +439,18 @@ PersistenceService should be independently testable.
 Tests should verify:
 
 - repository coordination.
+- durable persistence behavior.
 - transaction handling.
-- projection behavior.
-- failure recovery.
+- failure propagation.
 - deterministic persistence results.
+
+Tests should not require:
+
+- Redis.
+- vector databases.
+- LLM providers.
+- CrewAI.
+- LangGraph.
 
 Infrastructure implementations should be replaceable through repository abstractions.
 
@@ -364,10 +462,9 @@ The following may change:
 
 - SQLite.
 - PostgreSQL.
-- Redis.
-- MongoDB.
-- Cloud storage.
-- Event streaming systems.
+- cloud databases.
+- audit storage systems.
+- event storage systems.
 
 The stable capability remains:
 
@@ -380,7 +477,7 @@ PersistenceService
 
 ↓
 
-Institutional Knowledge Storage
+Institutional Durable Knowledge
 ```
 
 ---
@@ -393,13 +490,22 @@ PersistenceService exists because truth and storage are different concepts.
 
 `PersistenceService` preserves that truth.
 
-The service ensures that AEGIS remains:
+`CacheService` reuses previously established truth.
 
-- reproducible.
-- auditable.
-- storage-independent.
-- resilient to infrastructure changes.
+These responsibilities must remain separate.
 
-The system may replace databases, caches, or storage technologies in the future.
+The system may replace:
+
+- databases.
+- caches.
+- storage technologies.
 
 The meaning of the persisted clinical decision must remain unchanged.
+
+AEGIS therefore maintains:
+
+- reproducibility.
+- auditability.
+- storage independence.
+- deterministic knowledge reuse.
+- separation between truth creation, truth preservation, and truth reuse.
