@@ -17,7 +17,12 @@ progressively by the node that produces it. ``physician_decision_submission``
 is the one field not produced by a node's return value in the normal
 sense -- it is written externally via ``update_state``/``Command(resume=...)``
 when ``human_review_pending`` is resumed (see
-``aegis.graphs.nodes.human_review``).
+``aegis.graphs.nodes.human_review``). It is a transient resume payload,
+not an authoritative domain artifact: it exists only to carry physician
+input across the interrupt/resume boundary into ``decide_case``, is not
+a ``runtime_domain_contracts`` model, and must never be persisted,
+cached, or otherwise treated as institutional truth in its own right --
+that role belongs solely to the ``ClinicalDecision`` it helps produce.
 """
 
 from __future__ import annotations

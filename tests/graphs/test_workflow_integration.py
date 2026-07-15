@@ -391,6 +391,14 @@ class TestCacheHit:
         persistence_service: FakePersistenceService,
         call_order: list[str],
     ) -> None:
+        """
+        A cached ClinicalDecision is already authoritative clinical truth,
+        so a cache hit must bypass RetrievalService, ContextAssembler,
+        ClinicalReasoningService, ClinicalDecisionService,
+        PersistenceService, and CacheService.store() -- all six,
+        completely -- not merely return early while still touching some
+        of them.
+        """
         cached_decision = ClinicalDecision(
             decision_id=uuid4(),
             case_id=FIXED_CASE_ID,
@@ -423,12 +431,16 @@ class TestCacheHit:
         assert "clinical_decision" in final_state
         assert final_state["clinical_decision"] == cached_decision
         assert len(cache_service.lookup_calls) == 1
-        assert retrieval_service.calls == []
-        assert context_assembler.calls == []
-        assert clinical_reasoning_service.calls == []
-        assert clinical_decision_service.calls == []
-        assert persistence_service.calls == []
-        assert cache_service.store_calls == []
+
+        # A cached ClinicalDecision is already authoritative clinical
+        # truth -- a cache hit must bypass every downstream collaborator
+        # entirely, not merely skip some of them.
+        assert retrieval_service.calls == []  # bypasses RetrievalService
+        assert context_assembler.calls == []  # bypasses ContextAssembler
+        assert clinical_reasoning_service.calls == []  # bypasses ClinicalReasoningService
+        assert clinical_decision_service.calls == []  # bypasses ClinicalDecisionService
+        assert persistence_service.calls == []  # bypasses PersistenceService
+        assert cache_service.store_calls == []  # bypasses CacheService.store()
 
 
 class TestCacheMiss:
@@ -482,6 +494,39 @@ class TestPersistenceOrdering:
         assert "clinical_decision" in final_state
         assert len(clinical_decision_service.calls) == 1
         assert call_order == ["persist", "cache_store"]
+
+    def test_ordering_invariant_persist_precedes_cache_store(
+        self,
+        graph,
+        persistence_service: FakePersistenceService,
+        cache_service: FakeCacheService,
+        call_order: list[str],
+    ) -> None:
+        """
+        Workflow ordering invariant: durable truth must exist before
+        deterministic knowledge reuse is updated. PersistenceService.persist()
+        must be observed strictly before CacheService.store() -- this test
+        asserts that ordering in isolation, independent of any other
+        pipeline outcome, so a future change that reorders the graph's
+        edges (even if it left every other assertion passing) would be
+        caught here specifically.
+        """
+        submission = make_submission()
+        config = make_config()
+
+        paused_state = asyncio.run(graph.ainvoke({"submission": submission}, config=config))
+        coding_recommendation = paused_state["coding_recommendation"]
+        physician_submission = make_physician_submission(
+            coding_recommendation,
+            patient_id=submission.patient_id,
+            normalization_version=paused_state["normalized_note"].normalization_version,
+        )
+
+        asyncio.run(graph.ainvoke(Command(resume=physician_submission), config=config))
+
+        assert persistence_service.calls, "PersistenceService.persist() was never called"
+        assert cache_service.store_calls, "CacheService.store() was never called"
+        assert call_order.index("persist") < call_order.index("cache_store")
 
     def test_cache_store_never_runs_if_persistence_fails(
         self,
