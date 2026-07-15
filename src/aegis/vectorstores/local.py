@@ -17,7 +17,7 @@ class LocalVectorStore(VectorStore):
     NOT production scalable.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # concept_id -> VectorDocument
         self._store: Dict[str, VectorDocument] = {}
 

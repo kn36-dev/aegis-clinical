@@ -265,10 +265,6 @@ class TestAggressiveCacheCanonicalizationRuleSet:
 
 class TestCacheServiceDoesNotPerformReasoning:
     def test_service_exposes_only_lookup_and_store(self):
-        public_methods = {
-            name
-            for name in vars(CacheService)
-            if not name.startswith("_")
-        }
+        public_methods = {name for name in vars(CacheService) if not name.startswith("_")}
 
         assert public_methods == {"lookup", "store"}

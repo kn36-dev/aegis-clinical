@@ -21,7 +21,7 @@ configure_logging()
 logger = get_logger(__name__)
 
 
-def main():
+def main() -> None:
     connection = sqlite3.connect(os.getenv("CLINICAL_DB_PATH", "data/clinical_registry.db"))
 
     repository = ICDRepository(connection=connection)

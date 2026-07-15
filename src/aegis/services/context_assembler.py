@@ -85,9 +85,7 @@ class DefaultContextAssembler(ContextAssembler):
         normalized_note: NormalizedClinicalNote,
     ) -> ReasoningContext:
         if retrieval_result.normalized_note != normalized_note:
-            raise ValueError(
-                "retrieval_result was not produced from the given normalized_note."
-            )
+            raise ValueError("retrieval_result was not produced from the given normalized_note.")
 
         return ReasoningContext(
             case_id=normalized_note.clinical_note.case_id,
@@ -95,9 +93,7 @@ class DefaultContextAssembler(ContextAssembler):
             candidates=self._select_candidates(retrieval_result.candidates),
         )
 
-    def _select_candidates(
-        self, candidates: list[RetrievalCandidate]
-    ) -> list[CandidateConcept]:
+    def _select_candidates(self, candidates: list[RetrievalCandidate]) -> list[CandidateConcept]:
         """
         Deterministically curate retrieval candidates for reasoning.
 

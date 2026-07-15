@@ -13,7 +13,7 @@ from aegis.database.database import (
 )
 
 
-def main():
+def main() -> None:
     # 2. Since this is an entry-point CLI tool, it is allowed to configure logging
     logging.basicConfig(
         level=logging.INFO, format="⚙️  [CLI] %(asctime)s - %(levelname)s - %(message)s"

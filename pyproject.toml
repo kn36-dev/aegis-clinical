@@ -37,6 +37,8 @@ dev = [
 
 [tool.ruff]
 line-length = 100
+
+[too.ruff.lint]
 select = ["E", "F", "B", "ASYNC", "TCH"]
 
 [tool.ruff.format]

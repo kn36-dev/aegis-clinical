@@ -139,9 +139,7 @@ class TestSuccessfulReasoning:
 
         assert isinstance(recommendation, CodingRecommendation)
 
-    def test_recommendation_references_the_case_id(
-        self, service: DefaultClinicalReasoningService
-    ):
+    def test_recommendation_references_the_case_id(self, service: DefaultClinicalReasoningService):
         context = make_context()
 
         recommendation = service.reason(context)

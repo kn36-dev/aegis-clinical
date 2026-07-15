@@ -1,9 +1,10 @@
 # src/aegis/api/dependencies.py
 import os
 from functools import lru_cache
+from typing import Any
 
 from fastapi import Request
-from langchain.chat_models import init_chat_model
+from langchain.chat_models import BaseChatModel, init_chat_model
 from upstash_redis import Redis
 from upstash_vector import Index
 
@@ -13,7 +14,7 @@ settings = get_settings()
 
 
 @lru_cache
-def get_chat_model():
+def get_chat_model() -> BaseChatModel:
     """
     Returns the application's default chat model.
 
@@ -53,7 +54,7 @@ def get_redis_client() -> Redis:
     )
 
 
-def get_llm_client():
+def get_llm_client() -> BaseChatModel:
     # Enforces strict configuration tracking across system updates
     api_key = os.getenv("LLM_API_KEY")
     if not api_key:
@@ -67,7 +68,7 @@ def get_llm_client():
     )
 
 
-def get_graph_checkpointer(request: Request):
+def get_graph_checkpointer(request: Request) -> Any:
     """
     Retrieves the shared LangGraph checkpoint manager
     attached during FastAPI startup.

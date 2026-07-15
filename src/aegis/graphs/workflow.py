@@ -101,8 +101,8 @@ def build_aegis_graph(
     once it reaches that boundary rather than suspending (see
     ``langgraph.types.interrupt``).
     """
-    graph: StateGraph[AegisWorkflowState, Any, AegisWorkflowState, AegisWorkflowState] = (
-        StateGraph(AegisWorkflowState)
+    graph: StateGraph[AegisWorkflowState, Any, AegisWorkflowState, AegisWorkflowState] = StateGraph(
+        AegisWorkflowState
     )
 
     graph.add_node("create_clinical_note", make_create_clinical_note_node(clinical_note_service))

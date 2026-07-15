@@ -1,6 +1,6 @@
 # src/aegis/config.py
 from functools import lru_cache
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import Field, HttpUrl, SecretStr, ValidationError
 
@@ -42,7 +42,7 @@ class AppSettings(BaseSettings):
         extra="ignore",
     )
 
-    def __init__(self, **values):
+    def __init__(self, **values: Any) -> None:
         super().__init__(**values)
 
         missing_fields: list[str] = []

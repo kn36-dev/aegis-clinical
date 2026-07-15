@@ -213,8 +213,7 @@ class TestModificationIsUnsupported:
         assert classification.icd_code == "1A01"
         assert classification.disposition == RecommendationDisposition.ADDED
         assert all(
-            c.disposition != RecommendationDisposition.MODIFIED
-            for c in decision.approved_icd_codes
+            c.disposition != RecommendationDisposition.MODIFIED for c in decision.approved_icd_codes
         )
 
     def test_original_ai_code_is_excluded_not_recorded_as_removed(
@@ -268,9 +267,7 @@ class TestInvalidDecision:
         with pytest.raises(ValueError):
             service.decide(recommendation, submission)
 
-    def test_duplicate_selected_codes_are_rejected(
-        self, service: DefaultClinicalDecisionService
-    ):
+    def test_duplicate_selected_codes_are_rejected(self, service: DefaultClinicalDecisionService):
         recommendation = make_recommendation(icd_codes=["1A00"])
         submission = make_submission(recommendation, selected_icd_codes=["1A00", "1A00"])
 
@@ -305,9 +302,7 @@ class TestDeterminism:
 
 
 class TestBoundaryProtection:
-    def test_service_does_not_mutate_recommendation(
-        self, service: DefaultClinicalDecisionService
-    ):
+    def test_service_does_not_mutate_recommendation(self, service: DefaultClinicalDecisionService):
         recommendation = make_recommendation(icd_codes=["1A00"])
         original = recommendation.model_copy(deep=True)
         submission = make_submission(recommendation, selected_icd_codes=["1A00"])

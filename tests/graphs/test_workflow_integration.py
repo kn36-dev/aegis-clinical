@@ -464,9 +464,7 @@ class TestPersistenceOrdering:
         submission = make_submission()
         config = make_config()
 
-        paused_state = asyncio.run(
-            graph.ainvoke({"submission": submission}, config=config)
-        )
+        paused_state = asyncio.run(graph.ainvoke({"submission": submission}, config=config))
         coding_recommendation = paused_state["coding_recommendation"]
         physician_submission = make_physician_submission(
             coding_recommendation,
@@ -506,9 +504,7 @@ class TestPersistenceOrdering:
         submission = make_submission()
         config = make_config()
 
-        paused_state = asyncio.run(
-            graph.ainvoke({"submission": submission}, config=config)
-        )
+        paused_state = asyncio.run(graph.ainvoke({"submission": submission}, config=config))
         coding_recommendation = paused_state["coding_recommendation"]
         physician_submission = make_physician_submission(
             coding_recommendation,
@@ -531,9 +527,7 @@ class TestStateIntegrity:
         submission = make_submission()
         config = make_config()
 
-        paused_state = asyncio.run(
-            graph.ainvoke({"submission": submission}, config=config)
-        )
+        paused_state = asyncio.run(graph.ainvoke({"submission": submission}, config=config))
         coding_recommendation = paused_state["coding_recommendation"]
         physician_submission = make_physician_submission(
             coding_recommendation,

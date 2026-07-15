@@ -77,9 +77,7 @@ class TestContextAssemblerInterface:
         with pytest.raises(TypeError):
             ContextAssembler()  # type: ignore[abstract]
 
-    def test_default_implementation_satisfies_interface(
-        self, assembler: DefaultContextAssembler
-    ):
+    def test_default_implementation_satisfies_interface(self, assembler: DefaultContextAssembler):
         assert isinstance(assembler, ContextAssembler)
 
 
@@ -121,10 +119,7 @@ class TestBasicContextCreation:
         assert context.candidates[0].icd_code == "1A00"
         assert context.candidates[0].title == "Cholera"
         assert context.candidates[0].hierarchy_context == candidate.hierarchy_context
-        assert (
-            context.candidates[0].semantic_representation
-            == candidate.semantic_representation
-        )
+        assert context.candidates[0].semantic_representation == candidate.semantic_representation
 
     def test_result_is_immutable(self, assembler: DefaultContextAssembler):
         note = make_normalized_note()

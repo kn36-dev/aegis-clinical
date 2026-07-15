@@ -1,5 +1,6 @@
 # src/aegis/api/main.py
 from contextlib import asynccontextmanager
+from typing import Any, AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +10,12 @@ from aegis.api.routers import clinical, review
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(
+    app: FastAPI,
+) -> AsyncGenerator[
+    Any,
+    Any,
+]:
     # Consolidated Lifespan Management
     checkpoint_db_path = "data/graph_checkpoints.db"
     async with AsyncSqliteSaver.from_conn_string(checkpoint_db_path) as saver:

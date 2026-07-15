@@ -163,9 +163,7 @@ class DefaultClinicalReasoningService(ClinicalReasoningService):
         ) from last_error
 
     @staticmethod
-    def _validate_codes_are_known(
-        validated: _RawReasoningOutput, allowed_codes: set[str]
-    ) -> None:
+    def _validate_codes_are_known(validated: _RawReasoningOutput, allowed_codes: set[str]) -> None:
         for recommendation in validated.recommendations:
             if recommendation.icd_code not in allowed_codes:
                 raise ValueError(

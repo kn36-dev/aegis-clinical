@@ -3,7 +3,11 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from aegis.models.clinical_decision import ApprovedICDClassification, ClinicalDecision, RecommendationDisposition
+from aegis.models.clinical_decision import (
+    ApprovedICDClassification,
+    ClinicalDecision,
+    RecommendationDisposition,
+)
 from aegis.services.persistence_service import (
     DefaultPersistenceService,
     PersistenceResult,
@@ -170,9 +174,7 @@ class TestDeterminism:
 
 
 class TestBoundaryProtection:
-    def test_service_does_not_mutate_decision(
-        self, service: DefaultPersistenceService
-    ):
+    def test_service_does_not_mutate_decision(self, service: DefaultPersistenceService):
         decision = make_decision()
         original = decision.model_copy(deep=True)
 

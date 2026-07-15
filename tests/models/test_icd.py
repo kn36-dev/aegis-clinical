@@ -1,7 +1,11 @@
 import pytest
 from pydantic import ValidationError
 
-from aegis.models.icd import ICDConcept
+from aegis.models.icd import (
+    ICDConcept,
+    ICDSuggestion,
+    TaxonomyCandidate,
+)
 
 
 def test_taxonomy_candidate_construction():
@@ -89,11 +93,6 @@ def test_icd_round_trip():
     assert restored == concept
 
 
-from aegis.models.icd import (
-    TaxonomyCandidate,
-)
-
-
 def test_candidate_construction():
     candidate = TaxonomyCandidate(
         concept=ICDConcept(
@@ -129,11 +128,6 @@ def test_candidate_round_trip():
     restored = TaxonomyCandidate.model_validate(candidate.model_dump())
 
     assert restored == candidate
-
-
-from aegis.models.icd import (
-    ICDSuggestion,
-)
 
 
 def test_suggestion_construction():

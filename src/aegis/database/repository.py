@@ -65,7 +65,14 @@ class ClinicalRegistryRepository:
             CREATE TABLE IF NOT EXISTS patient_case (
                 patient_id TEXT PRIMARY KEY,
                 case_id TEXT UNIQUE NOT NULL,
-                status TEXT NOT NULL CHECK (status IN ('pending_ai', 'pending_hitl', 'archived', 'failed')),
+                status TEXT NOT NULL CHECK (
+                    status IN (
+                        'pending_ai', 
+                        'pending_hitl', 
+                        'archived', 
+                        'failed'
+                    )
+                ),
                 ingress_timestamp TEXT NOT NULL,
                 raw_clinical_note TEXT NOT NULL,
                 anonymized_clinical_note TEXT,
@@ -97,7 +104,17 @@ class ClinicalRegistryRepository:
         if self.conn is None:
             raise RuntimeError("Repository connection is not initialized")
         row = self.conn.execute(
-            "SELECT patient_id, raw_notes, clinical_notes_clear, icd11_codes, status, version FROM patient_case WHERE patient_id = ?;",
+            """
+            SELECT 
+                patient_id, 
+                raw_notes, 
+                clinical_notes_clear, 
+                icd11_codes, 
+                status, 
+                version 
+            FROM patient_case 
+            WHERE patient_id = ?;,
+            """,
             (patient_id,),
         ).fetchone()
         if row is None:
@@ -168,7 +185,15 @@ class ClinicalRegistryRepository:
             raise RuntimeError("Repository connection is not initialized")
         self.conn.execute(
             """
-            INSERT INTO icd11_taxonomy (code, title, class_kind, context_path, chapter_no, is_leaf, is_residual)
+            INSERT INTO icd11_taxonomy (
+                code, 
+                title, 
+                class_kind, 
+                context_path, 
+                chapter_no, 
+                is_leaf, 
+                is_residual
+            )
             VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(code) DO UPDATE SET
                 title = excluded.title,
@@ -194,7 +219,18 @@ class ClinicalRegistryRepository:
         if self.conn is None:
             raise RuntimeError("Repository connection is not initialized")
         row = self.conn.execute(
-            "SELECT code, title, class_kind, context_path, chapter_no, is_leaf, is_residual FROM icd11_taxonomy WHERE code = ?;",
+            """
+            SELECT 
+                code, 
+                title, 
+                class_kind, 
+                context_path, 
+                chapter_no, 
+                is_leaf, 
+                is_residual 
+            FROM icd11_taxonomy 
+            WHERE code = ?;
+            """,
             (code,),
         ).fetchone()
         if row is None:

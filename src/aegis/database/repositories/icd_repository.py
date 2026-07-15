@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import sqlite3
-from typing import Iterable, List, Optional
+from typing import Iterable
 
 from aegis.database.repositories.models import ICDTaxonomyRecord
 
@@ -40,7 +40,7 @@ class ICDRepository:
     # READ OPERATIONS
     # ------------------------------------------------------------------------
 
-    def get_by_code(self, code: str) -> Optional[ICDTaxonomyRecord]:
+    def get_by_code(self, code: str) -> ICDTaxonomyRecord | None:
         """
         Fetch a single ICD record by code.
         """
@@ -61,7 +61,7 @@ class ICDRepository:
 
         return self._row_to_record(row, select_columns)
 
-    def list_all(self, limit: Optional[int] = None) -> List[ICDTaxonomyRecord]:
+    def list_all(self, limit: int | None = None) -> list[ICDTaxonomyRecord]:
         """
         Fetch all ICD records (optionally limited).
         """
@@ -101,7 +101,7 @@ class ICDRepository:
 
         rows = []
         for record in records:
-            values = []
+            values: list[str | int | None] = []
             for column in insert_columns:
                 if column == "code":
                     values.append(record.code)
@@ -126,7 +126,7 @@ class ICDRepository:
     # INTERNAL MAPPING
     # ------------------------------------------------------------------------
 
-    def _get_select_columns(self) -> List[str]:
+    def _get_select_columns(self) -> list[str]:
         available_columns = self._get_available_columns()
         return [
             column
@@ -141,7 +141,7 @@ class ICDRepository:
             if column in available_columns
         ]
 
-    def _get_insert_columns(self) -> List[str]:
+    def _get_insert_columns(self) -> list[str]:
         available_columns = self._get_available_columns()
         return [
             column
@@ -156,17 +156,19 @@ class ICDRepository:
             if column in available_columns
         ]
 
-    def _get_available_columns(self) -> List[str]:
+    def _get_available_columns(self) -> list[str]:
         cursor = self._conn.execute("PRAGMA table_info(icd11_taxonomy)")
         rows = cursor.fetchall()
         return [row[1] for row in rows]
 
-    def _coerce_bool(self, value: Optional[bool]) -> Optional[int]:
+    def _coerce_bool(self, value: bool | None) -> int | None:
         if value is None:
             return None
         return int(value)
 
-    def _row_to_record(self, row: tuple, selected_columns: List[str]) -> ICDTaxonomyRecord:
+    def _row_to_record(
+        self, row: tuple[object, ...], selected_columns: list[str]
+    ) -> ICDTaxonomyRecord:
         """
         Maps SQLite row → ICDTaxonomyRecord
         """
@@ -174,15 +176,15 @@ class ICDRepository:
         values = {column: row[index] for index, column in enumerate(selected_columns)}
 
         return ICDTaxonomyRecord(
-            code=values.get("code") or "",
-            title=values.get("title") or "",
-            context_path=values.get("context_path"),
-            chapter_no=values.get("chapter_no"),
+            code=self._coerce_optional_str(values.get("code")) or "",
+            title=self._coerce_optional_str(values.get("title")) or "",
+            context_path=self._coerce_optional_str(values.get("context_path")),
+            chapter_no=self._coerce_optional_str(values.get("chapter_no")),
             is_leaf=self._coerce_optional_bool(values.get("is_leaf")),
             is_residual=self._coerce_optional_bool(values.get("is_residual")),
         )
 
-    def _coerce_optional_bool(self, value: object) -> Optional[bool]:
+    def _coerce_optional_bool(self, value: object) -> bool | None:
         if value is None:
             return None
         if isinstance(value, bool):
@@ -196,3 +198,10 @@ class ICDRepository:
             if normalized in {"0", "false", "no", "n"}:
                 return False
         return None
+
+    def _coerce_optional_str(self, value: object) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return value
+        return str(value)

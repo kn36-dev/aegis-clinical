@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
@@ -72,4 +72,5 @@ class SentenceTransformersEmbeddingProvider(EmbeddingProvider):
         ]
 
     def embed_query(self, text: str) -> list[float]:
-        return self._model.encode(text).tolist()
+        embedding = self._model.encode(text).tolist()
+        return cast(list[float], embedding)
