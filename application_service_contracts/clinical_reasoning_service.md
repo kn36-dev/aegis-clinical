@@ -24,13 +24,60 @@ The implementation may evolve over time, but the business capability remains unc
 
 ---
 
+# Architectural Flow
+
+`ClinicalReasoningService` sits downstream of retrieval and context assembly,
+never in front of them:
+
+```
+RetrievalResult
+
+        ↓
+
+ContextAssembler
+
+        ↓
+
+ReasoningContext
+
+        ↓
+
+ClinicalReasoningService
+
+        ↓
+
+CodingRecommendation
+```
+
+Ownership along this flow is:
+
+- `RetrievalService` owns retrieval and produces `RetrievalResult`.
+- `ContextAssembler` owns curating `RetrievalResult` into the bounded
+  `ReasoningContext` that crosses the reasoning boundary.
+- `ClinicalReasoningService` only reasons over `ReasoningContext` — it never
+  receives, constructs, or depends on `RetrievalResult` or `RetrievalCandidate`
+  directly.
+- `ReasoningProvider` (the CrewAI/LLM/agent-framework boundary described under
+  Internal Architecture) produces raw, untrusted probabilistic output —
+  structurally shaped, but not yet trusted.
+- `ClinicalReasoningService` validates that output (schema validation plus the
+  "no invented ICD codes outside ReasoningContext.candidates" business
+  invariant) before any `CodingRecommendation` is constructed.
+- `CodingRecommendation` is created only after validation succeeds; a failed
+  validation must never produce a `CodingRecommendation`.
+
+---
+
 # Ownership
 
 ## Consumes
 
 `ReasoningContext`
 
-A deterministic and bounded evidence package prepared by `ContextAssembler`.
+A deterministic and bounded evidence package prepared by `ContextAssembler`
+from a `RetrievalResult`. `ClinicalReasoningService` never sees that
+`RetrievalResult` — `ReasoningContext` is the only evidence input it depends
+on. See Architectural Flow above.
 
 The service never constructs `ReasoningContext` itself.
 
@@ -191,6 +238,13 @@ CodingRecommendation
 ```
 
 Each component is replaceable without changing the service contract.
+
+The current implementation names this replaceable boundary `ReasoningProvider`
+— an abstraction `ClinicalReasoningService` depends on, implemented by
+whatever combination of CrewAI, a direct LLM call, or a future framework is
+in use. `ReasoningProvider` returns raw, untrusted structured output;
+`ClinicalReasoningService` (not `ReasoningProvider`) owns validating it into a
+`CodingRecommendation`.
 
 ---
 
