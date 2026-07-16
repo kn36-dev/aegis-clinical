@@ -56,9 +56,7 @@ class TestRepositoryConstruction:
 
         assert isinstance(container.clinical_note_repository, SQLiteClinicalNoteRepository)
         assert isinstance(container.content_repository, SQLiteContentStore)
-        assert isinstance(
-            container.clinical_decision_repository, SQLiteClinicalDecisionRepository
-        )
+        assert isinstance(container.clinical_decision_repository, SQLiteClinicalDecisionRepository)
 
 
 class TestServiceConstruction:

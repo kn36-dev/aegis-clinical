@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-from crewai import Process
+from crewai import Agent, Process
 
-from aegis.agents.crew.agents import CLINICAL_REASONING_AGENT_ROLE, build_clinical_reasoning_agent
+from aegis.agents.crew.agents import (
+    CLINICAL_REASONING_AGENT_BACKSTORY,
+    CLINICAL_REASONING_AGENT_GOAL,
+    CLINICAL_REASONING_AGENT_ROLE,
+    build_clinical_reasoning_agent,
+)
 from aegis.agents.crew.crews import build_clinical_reasoning_crew
 from aegis.agents.crew.tasks import ICDReasoningOutput, build_icd_reasoning_task
 
@@ -12,16 +17,25 @@ from aegis.agents.crew.tasks import ICDReasoningOutput, build_icd_reasoning_task
 def test_build_clinical_reasoning_agent_is_bound_to_the_given_llm():
     llm = MagicMock()
 
-    agent = build_clinical_reasoning_agent(llm)
+    with patch("aegis.agents.crew.agents.Agent") as mock_agent:
+        build_clinical_reasoning_agent(llm)
 
-    assert agent.role == CLINICAL_REASONING_AGENT_ROLE
-    assert agent.llm is llm
-    assert agent.allow_delegation is False
+        mock_agent.assert_called_once_with(
+            role=CLINICAL_REASONING_AGENT_ROLE,
+            goal=CLINICAL_REASONING_AGENT_GOAL,
+            backstory=CLINICAL_REASONING_AGENT_BACKSTORY,
+            llm=llm,
+            allow_delegation=False,
+            verbose=False,
+        )
 
 
 def test_build_icd_reasoning_task_wraps_prompt_as_description():
-    llm = MagicMock()
-    agent = build_clinical_reasoning_agent(llm)
+    agent = Agent(
+        role="test-agent",
+        goal="test-goal",
+        backstory="test-backstory",
+    )
 
     task = build_icd_reasoning_task(agent, "the rendered reasoning prompt")
 
@@ -31,9 +45,20 @@ def test_build_icd_reasoning_task_wraps_prompt_as_description():
 
 
 def test_build_clinical_reasoning_crew_assembles_one_agent_and_one_task():
-    llm = MagicMock()
+    fake_agent = Agent(
+        role="test-agent",
+        goal="test-goal",
+        backstory="test-backstory",
+    )
 
-    crew = build_clinical_reasoning_crew(llm, "the rendered reasoning prompt")
+    with patch(
+        "aegis.agents.crew.crews.build_clinical_reasoning_agent",
+        return_value=fake_agent,
+    ):
+        crew = build_clinical_reasoning_crew(
+            MagicMock(),
+            "the rendered reasoning prompt",
+        )
 
     assert len(crew.agents) == 1
     assert len(crew.tasks) == 1

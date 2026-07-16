@@ -1,88 +1,55 @@
-# Tests the dependency provider functions that FastAPI injects into routes
-# 1. `get_chat_model()` returns a configured model
-# 2. `get_vector_client()` is cached (`lru_cache`)
-# 3. `get_redis_client()` is cached
-# 4. Graph checkpointer dependency retrievs the lifespan object correctly
-# 5. `get_chat_model()` should also be cached
-# Slight example: assert get_chat_model() is get_chat_model() and for vector and redis, this proves
-# that the dependency provider behave as singletons throughout the application's lifetime
-
-import importlib
-import sys
+# Tests the FastAPI dependency providers routers use to retrieve the
+# application-wide container/graph from app.state, instead of
+# constructing services, repositories, or infrastructure themselves.
 from types import SimpleNamespace
-from unittest.mock import patch
 
-import pytest
+from fastapi import Depends, FastAPI
+from fastapi.testclient import TestClient
 
-
-@pytest.fixture
-def deps_module(monkeypatch):
-    monkeypatch.setenv("GROQ_API_KEY", "test-groq-key")
-    monkeypatch.setenv("UPSTASH_VECTOR_REST_URL", "https://vector.example.com")
-    monkeypatch.setenv("UPSTASH_VECTOR_REST_TOKEN", "vector-token")
-    monkeypatch.setenv("UPSTASH_REDIS_REST_URL", "https://redis.example.com")
-    monkeypatch.setenv("UPSTASH_REDIS_REST_TOKEN", "redis-token")
-    monkeypatch.setenv("LLM_PROVIDER", "groq")
-    monkeypatch.setenv("LLM_MODEL", "test-model")
-
-    sys.modules.pop("aegis.api.dependencies", None)
-    sys.modules.pop("aegis.config", None)
-
-    module = importlib.import_module("aegis.api.dependencies")
-    module.get_chat_model.cache_clear()
-    module.get_vector_client.cache_clear()
-    module.get_redis_client.cache_clear()
-    return module
+from aegis.api.dependencies import get_container, get_graph
 
 
-def test_get_chat_model_returns_configured_model(deps_module):
-    dummy_model = object()
-
-    with patch.object(deps_module, "init_chat_model", return_value=dummy_model) as init_chat_model:
-        model = deps_module.get_chat_model()
-
-    assert model is dummy_model
-    init_chat_model.assert_called_once_with(
-        model="test-model",
-        model_provider="groq",
-        api_key="test-groq-key",
-        temperature=0.0,
-    )
-
-
-def test_get_vector_client_is_cached(deps_module):
-    with patch.object(deps_module, "Index", side_effect=lambda **kwargs: object()) as index_cls:
-        first = deps_module.get_vector_client()
-        second = deps_module.get_vector_client()
-
-    assert first is second
-    assert index_cls.call_count == 1
-
-
-def test_get_redis_client_is_cached(deps_module):
-    with patch.object(deps_module, "Redis", side_effect=lambda **kwargs: object()) as redis_cls:
-        first = deps_module.get_redis_client()
-        second = deps_module.get_redis_client()
-
-    assert first is second
-    assert redis_cls.call_count == 1
-
-
-def test_get_graph_checkpointer_returns_request_state(deps_module):
-    expected_checkpointer = object()
+def test_get_container_returns_request_app_state_container() -> None:
+    expected_container = object()
     request = SimpleNamespace(
-        app=SimpleNamespace(state=SimpleNamespace(graph_checkpointer=expected_checkpointer))
+        app=SimpleNamespace(state=SimpleNamespace(container=expected_container))
     )
 
-    assert deps_module.get_graph_checkpointer(request) is expected_checkpointer
+    assert get_container(request) is expected_container  # type: ignore[arg-type]
 
 
-def test_get_chat_model_is_cached(deps_module):
-    with patch.object(
-        deps_module, "init_chat_model", side_effect=[object(), object()]
-    ) as init_chat_model:
-        first = deps_module.get_chat_model()
-        second = deps_module.get_chat_model()
+def test_get_graph_returns_request_app_state_graph() -> None:
+    expected_graph = object()
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(graph=expected_graph)))
 
-    assert first is second
-    assert init_chat_model.call_count == 1
+    assert get_graph(request) is expected_graph  # type: ignore[arg-type]
+
+
+def test_get_container_resolves_through_fastapi_dependency_injection() -> None:
+    """
+    Proves the wiring end to end through FastAPI's own DI machinery,
+    not just direct python attribute access: a route depending on
+    ``get_container``/``get_graph`` must receive exactly what startup
+    stored on ``app.state``, without instantiating anything itself.
+    """
+    expected_container = object()
+    expected_graph = object()
+    test_app = FastAPI()
+    test_app.state.container = expected_container
+    test_app.state.graph = expected_graph
+
+    @test_app.get("/probe")
+    def probe(
+        container: object = Depends(get_container),
+        graph: object = Depends(get_graph),
+    ) -> dict[str, bool]:
+        return {
+            "container_is_expected": container is expected_container,
+            "graph_is_expected": graph is expected_graph,
+        }
+
+    with TestClient(test_app) as client:
+        response = client.get("/probe")
+
+    assert response.status_code == 200
+    assert response.json() == {"container_is_expected": True, "graph_is_expected": True}

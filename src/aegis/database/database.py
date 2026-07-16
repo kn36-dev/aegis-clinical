@@ -32,6 +32,46 @@ CLINICAL_MIGRATION_FILES = [
 GRAPH_MIGRATION_FILES = ["0001_init_checkpoint_blob"]
 
 
+def _ensure_migration_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_migrations (
+            migration_name TEXT PRIMARY KEY,
+            applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+
+
+def _migration_already_applied(
+    conn: sqlite3.Connection,
+    migration_name: str,
+) -> bool:
+    row = conn.execute(
+        """
+        SELECT 1
+        FROM schema_migrations
+        WHERE migration_name = ?;
+        """,
+        (migration_name,),
+    ).fetchone()
+
+    return row is not None
+
+
+def _record_migration(
+    conn: sqlite3.Connection,
+    migration_name: str,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO schema_migrations(migration_name)
+        VALUES (?);
+        """,
+        (migration_name,),
+    )
+
+
 def _execute_stepwise_scaffold(
     db_path: Path | str, migration_list: Iterable[str | Path], force_drop: bool
 ) -> None:
@@ -44,10 +84,22 @@ def _execute_stepwise_scaffold(
         target_path.unlink()
 
     with get_db_connection(target_path) as conn:
+        _ensure_migration_table(conn)
+
         for schema_name in migration_list:
+            migration_name = Path(schema_name).stem
+
+            if _migration_already_applied(conn, migration_name):
+                logger.info(
+                    "Skipping already applied migration %s",
+                    migration_name,
+                )
+                continue
+
             logger.info("Applying migration %s", schema_name)
             ddl_script = load_schema(schema_name)
             conn.executescript(ddl_script)
+            _record_migration(conn, migration_name)
 
 
 def init_all_databases(

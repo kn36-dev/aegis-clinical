@@ -24,7 +24,9 @@ def _make_context() -> ReasoningContext:
 def test_constructor_builds_llm_from_provider_and_model(mock_llm_cls, mock_build_crew):
     CrewAIReasoningProvider(provider="groq", model="qwen/qwen3-32b", api_key="key", temperature=0.2)
 
-    mock_llm_cls.assert_called_once_with(model="groq/qwen/qwen3-32b", api_key="key", temperature=0.2)
+    mock_llm_cls.assert_called_once_with(
+        model="groq/qwen/qwen3-32b", api_key="key", temperature=0.2
+    )
 
 
 @patch(f"{MODULE}.build_clinical_reasoning_crew")

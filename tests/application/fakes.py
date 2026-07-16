@@ -13,12 +13,14 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
+from aegis.embeddings.base import EmbeddingProvider
+from aegis.indexing.documents import RepresentationDocument, VectorDocument
 from aegis.models.clinical_decision import ClinicalDecision
 from aegis.models.clinical_note import ClinicalNote
 from aegis.models.normalized_clinical_note import NormalizedClinicalNote
 from aegis.models.reasoning_context import ReasoningContext
 from aegis.phi.base import PHIAnonymizer
-from aegis.retrieval.providers.base import VectorMatch
+from aegis.retrieval.providers.base import VectorMatch, VectorQueryProvider
 from aegis.services.clinical_reasoning_service import ReasoningProvider
 
 FIXED_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -65,17 +67,36 @@ class FakeClinicalDecisionCacheRepository:
         self._store[cache_key] = decision
 
 
-class FakeEmbeddingProvider:
-    """In-memory stand-in for ``EmbeddingProvider``."""
+class FakeEmbeddingProvider(EmbeddingProvider):
+    """In-memory stand-in for EmbeddingProvider."""
 
     def __init__(self, vector: list[float] | None = None) -> None:
         self._vector = vector or [0.1, 0.2, 0.3]
 
+    def embed(self, document: RepresentationDocument) -> VectorDocument:
+        """
+        Return a deterministic fake embedding artifact.
+
+        The fake preserves the original representation document and injects
+        a predictable vector so tests can verify application behavior without
+        invoking a real embedding model.
+        """
+        return VectorDocument(
+            representation=document,
+            embedding=self._vector,
+        )
+
     def embed_query(self, text: str) -> list[float]:
+        """
+        Return a deterministic query embedding.
+
+        Runtime retrieval tests only need a stable vector space substitute;
+        no semantic embedding behavior is required.
+        """
         return self._vector
 
 
-class FakeVectorQueryProvider:
+class FakeVectorQueryProvider(VectorQueryProvider):
     """In-memory stand-in for ``VectorQueryProvider``."""
 
     def __init__(self, matches: list[VectorMatch] | None = None) -> None:

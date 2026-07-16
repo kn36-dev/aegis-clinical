@@ -1,16 +1,3 @@
--- ============================================================================
--- AEGIS Clinical Database Full Schema
--- ============================================================================
--- This file contains the complete database schema combining all migrations
--- in sequence: from initialization through human review logging.
--- The conn.execute("PRAGMA foreign_keys = ON") is configured before this.
--- ============================================================================
-
-
--- ============================================================================
--- 0001: Checkpoint Blob Table - Workflow State Management
--- ============================================================================
-
 CREATE TABLE IF NOT EXISTS checkpoint_blob (
     thread_id TEXT NOT NULL,
     checkpoint_id TEXT NOT NULL,
@@ -32,11 +19,6 @@ CREATE TABLE IF NOT EXISTS checkpoint_blob (
 -- Detailed execution telemetry, including span timing, token usage metrics, and runtime diagnostics, is emitted separately through OpenTelemetry exporters and written to local development logs. This allows workflow state and observability data to evolve independently while keeping the checkpoint database lightweight and easy to inspect.
 -- For production-scale deployments, telemetry would typically be exported via OTLP to a dedicated observability platform such as Jaeger, Grafana Tempo, OpenObserve, or another OpenTelemetry-compatible backend. The portfolio implementation intentionally keeps observability infrastructure minimal to prioritize reproducibility and ease of setup while still demonstrating trace correlation and instrumentation patterns.
 
-
--- ============================================================================
--- 0001: Patient Identity Vault - De-identification & HIPAA Compliance
--- ============================================================================
-
 CREATE TABLE IF NOT EXISTS patient_identity_vault (
     patient_id TEXT PRIMARY KEY,
     medical_record_number TEXT UNIQUE NOT NULL,
@@ -44,11 +26,6 @@ CREATE TABLE IF NOT EXISTS patient_identity_vault (
     last_name TEXT NOT NULL,
     date_of_birth TEXT NOT NULL
 );
-
-
--- ============================================================================
--- 0002: Patient Case - Clinical Note Ingestion & Case Management
--- ============================================================================
 
 CREATE TABLE IF NOT EXISTS patient_case (
     case_id TEXT PRIMARY KEY,
@@ -62,37 +39,41 @@ CREATE TABLE IF NOT EXISTS patient_case (
     
 
     status TEXT NOT NULL CHECK (status IN ('pending_ai', 'pending_hitl', 'archived', 'failed', 'completed')),
-    ingress_timestamp TEXT NOT NULL, -- ISO8601 UTC
+    ingress_timestamp TEXT NOT NULL,
 
-    raw_clinical_note TEXT NOT NULL,
-    anonymized_clinical_note TEXT,
+
+    -- raw_clinical_note TEXT NOT NULL,
+    -- anonymized_clinical_note TEXT,
 
     version INTEGER NOT NULL DEFAULT 1,
     FOREIGN KEY (patient_id) REFERENCES patient_identity_vault(patient_id)
 );
 
+DROP TABLE IF EXISTS icd11_taxonomy;
 
--- ============================================================================
--- 0003: ICD-11 Taxonomy Reference - Medical Code Standardization
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS icd11_taxonomy_reference (
+CREATE TABLE icd11_taxonomy (
     code TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     class_kind TEXT NOT NULL,
-    context_path TEXT NOT NULL
+    context_path TEXT,
+    chapter_no TEXT,
+    is_leaf INTEGER,
+    is_residual INTEGER
 );
+
+
+-- CREATE TABLE IF NOT EXISTS icd11_taxonomy_reference (
+--     code TEXT PRIMARY KEY,
+--     title TEXT NOT NULL,
+--     class_kind TEXT NOT NULL,
+--     context_path TEXT NOT NULL
+-- );
 
 -- Example value
 -- Code:         1A03.Z
 -- Title:        Intestinal infections due to Escherichia coli, unspecified
 -- Class Kind:   category
 -- Context Path: Gastroenteritis or colitis of infectious origin > Bacterial intestinal infections > Intestinal infections due to Escherichia coli > Intestinal infections due to Escherichia coli, unspecified
-
-
--- ============================================================================
--- 0004: Patient Extracted Code - AI-Generated Medical Codes
--- ============================================================================
 
 CREATE TABLE IF NOT EXISTS patient_extracted_code (
     case_id TEXT NOT NULL,
@@ -103,16 +84,11 @@ CREATE TABLE IF NOT EXISTS patient_extracted_code (
     extraction_source TEXT NOT NULL,
     PRIMARY KEY (case_id, icd11_code),
     FOREIGN KEY (case_id) REFERENCES patient_case(case_id) ON DELETE CASCADE,
-    FOREIGN KEY (icd11_code) REFERENCES icd11_taxonomy_reference(code)
+    FOREIGN KEY (icd11_code) REFERENCES icd11_taxonomy(code)
 );
-
+ 
 -- Remember, here 1 icd11_code translates to 1 row
 -- So 1 case_id can have multiple rows (1 medical case could diagnose multiple diseases)
-
-
--- ============================================================================
--- 0005: Clinical Trial - Recruitment Cohort Eligibility
--- ============================================================================
 
 CREATE TABLE IF NOT EXISTS clinical_trial (
     trial_id TEXT PRIMARY KEY,
@@ -136,18 +112,13 @@ CREATE TABLE IF NOT EXISTS clinical_trial (
 
 -- Normally the embedding is title + eligibility_criteria + phase metadata
 
-
--- ============================================================================
--- 0006: Trial Target Code - Trial Inclusion/Exclusion Criteria
--- ============================================================================
-
 CREATE TABLE IF NOT EXISTS trial_target_code (
     trial_id TEXT NOT NULL,
     icd11_code TEXT NOT NULL,
     criterion_type TEXT NOT NULL CHECK (criterion_type IN ('INCLUSION', 'EXCLUSION')),
     PRIMARY KEY (trial_id, icd11_code),
     FOREIGN KEY (trial_id) REFERENCES clinical_trial(trial_id) ON DELETE CASCADE,
-    FOREIGN KEY (icd11_code) REFERENCES icd11_taxonomy_reference(code)
+    FOREIGN KEY (icd11_code) REFERENCES icd11_taxonomy(code)
 );
 
 -- EXPLANATION:
@@ -209,24 +180,15 @@ CREATE TABLE IF NOT EXISTS trial_target_code (
 --         WHERE p2.patient_id = p.patient_id
 --     );
 
-
--- ============================================================================
--- 0007: Trial Match - Matching Decisions & Review Status
--- ============================================================================
-
 CREATE TABLE IF NOT EXISTS trial_match (
     match_id TEXT PRIMARY KEY,
     patient_id TEXT NOT NULL,
     trigger_case_id TEXT NOT NULL,
     trial_id TEXT NOT NULL,
-    structural_match_score REAL NOT NULL
-    CHECK (
-        structural_match_score >= 0.0
-        AND structural_match_score <= 1.0
-    ),
+    structural_match_score REAL NOT NULL,
     match_status TEXT NOT NULL CHECK (match_status IN ('PENDING_REVIEW', 'PHYSICIAN_APPROVED', 'PHYSICIAN_REJECTED')),
     justification_summary TEXT NOT NULL,
-    created_at TEXT NOT NULL, -- ISO8601 UTC
+    created_at TEXT NOT NULL,
 
     UNIQUE(patient_id, trial_id),
     FOREIGN KEY (patient_id) REFERENCES patient_identity_vault(patient_id),
@@ -240,11 +202,6 @@ CREATE TABLE IF NOT EXISTS trial_match (
 -- (Can be enhanced with NLP, fuzzy matching so it's not binary)
 -- justification_summary (filled by matching engine OR physician)
 
-
--- ============================================================================
--- 0008: Human Review Logs - Audit Trail & Physician Actions
--- ============================================================================
-
 CREATE TABLE IF NOT EXISTS human_review_log (
     review_id TEXT PRIMARY KEY,
     case_id TEXT NOT NULL,
@@ -252,25 +209,35 @@ CREATE TABLE IF NOT EXISTS human_review_log (
     action_taken TEXT NOT NULL CHECK (action_taken IN ('APPROVED_ALL', 'OVERRIDDEN_AND_APPROVED', 'REJECTED_CASE')),
     physician_notes TEXT,
     cryptographic_signature TEXT NOT NULL,
-    timestamp TEXT NOT NULL, -- ISO8601 UTC
-    FOREIGN KEY (case_id) REFERENCES patient_case(case_id) ON DELETE CASCADE
+    timestamp TEXT NOT NULL,
+    FOREIGN KEY (case_id) REFERENCES patient_case(case_id)
 );
 
 -- ============================================================================
--- 0009: Clinical Note Content - Sensitive Clinical Narrative
+-- 0009: Clinical Note Content - Content Storage Provider boundary
 -- ============================================================================
+--
+-- Backs the ClinicalNoteContentRepository protocol
+-- (aegis.services.normalization_service). content_reference is the opaque
+-- pointer already carried on ClinicalNote; it is the primary key here so a
+-- reference can be resolved without depending on case_id cardinality.
+--
+-- This table currently stores plaintext content_payload. It is intentionally
+-- a Content Storage Provider boundary, not an encryption boundary: no
+-- encryption is assumed or implemented here. A future encrypted-at-rest
+-- implementation (e.g. an EncryptedClinicalContentStore) can replace the
+-- SQLite adapter behind ClinicalNoteContentRepository without changing this
+-- table's role in the schema.
 
 CREATE TABLE IF NOT EXISTS clinical_note_content (
 
-    case_id TEXT PRIMARY KEY,
+    content_reference TEXT PRIMARY KEY,
 
-    encrypted_raw_note BLOB NOT NULL,
+    case_id TEXT NOT NULL,
 
-    encrypted_anonymized_note BLOB,
+    content_payload TEXT NOT NULL,
 
-    payload_checksum TEXT NOT NULL,
-
-    encryption_version INTEGER NOT NULL DEFAULT 1,
+    checksum TEXT NOT NULL,
 
     created_at TEXT NOT NULL,
 
@@ -280,34 +247,83 @@ CREATE TABLE IF NOT EXISTS clinical_note_content (
 
 );
 
--- ============================================================================
--- INDEXES
--- ============================================================================
-
-CREATE INDEX IF NOT EXISTS idx_patient_case_patient_id
-ON patient_case(patient_id);
-
-CREATE INDEX IF NOT EXISTS idx_patient_extracted_code_case
-ON patient_extracted_code(case_id);
-
-CREATE INDEX IF NOT EXISTS idx_patient_extracted_code_icd
-ON patient_extracted_code(icd11_code);
-
-CREATE INDEX IF NOT EXISTS idx_trial_target_code_icd
-ON trial_target_code(icd11_code);
-
-CREATE INDEX IF NOT EXISTS idx_trial_match_patient
-ON trial_match(patient_id);
-
-CREATE INDEX IF NOT EXISTS idx_trial_match_trial
-ON trial_match(trial_id);
-
-CREATE INDEX IF NOT EXISTS idx_human_review_log_case
-ON human_review_log(case_id);
-
 CREATE INDEX IF NOT EXISTS idx_clinical_note_content_case
 ON clinical_note_content(case_id);
 
 -- ============================================================================
--- END OF SCHEMA
+-- 0010: patient_case.content_reference - link case to its content record
 -- ============================================================================
+--
+-- ClinicalNote.content_reference is a direct, 1:1-owned attribute of the
+-- case (ClinicalNoteService creates exactly one ClinicalNote per case_id).
+-- Nullable because content may be written to clinical_note_content before
+-- or independently of the patient_case row being created.
+
+ALTER TABLE patient_case ADD COLUMN content_reference TEXT;
+
+-- ============================================================================
+-- 0011: Clinical Decision - durable, physician-approved clinical truth
+-- ============================================================================
+--
+-- Backs the ClinicalDecisionRepository protocol
+-- (aegis.services.persistence_service). Deliberately separate from
+-- patient_extracted_code (migration 0004), which is shaped for AI-extraction
+-- predictions (confidence_score, extraction_source) that ClinicalDecision's
+-- domain contract explicitly excludes.
+
+CREATE TABLE IF NOT EXISTS clinical_decision (
+
+    decision_id TEXT PRIMARY KEY,
+
+    case_id TEXT NOT NULL,
+
+    patient_id_reference TEXT NOT NULL,
+
+    normalization_version TEXT NOT NULL,
+
+    created_at TEXT NOT NULL,
+
+    FOREIGN KEY (case_id)
+        REFERENCES patient_case(case_id),
+
+    FOREIGN KEY (patient_id_reference)
+        REFERENCES patient_identity_vault(patient_id)
+
+);
+
+CREATE INDEX IF NOT EXISTS idx_clinical_decision_case
+ON clinical_decision(case_id);
+
+-- ============================================================================
+-- 0012: Approved ICD Classification - physician disposition per approved code
+-- ============================================================================
+--
+-- One row per ApprovedICDClassification on a ClinicalDecision. disposition
+-- (accepted/added/removed/modified) records the physician's relationship to
+-- the AI recommendation, per RecommendationDisposition
+-- (aegis.models.clinical_decision). sequence_index preserves the original
+-- ordering of ClinicalDecision.approved_icd_codes for round-trip fidelity;
+-- it is a persistence-mapping detail, not clinical meaning.
+
+CREATE TABLE IF NOT EXISTS approved_icd_classification (
+
+    decision_id TEXT NOT NULL,
+
+    icd_code TEXT NOT NULL,
+
+    disposition TEXT NOT NULL CHECK (
+        disposition IN ('accepted', 'added', 'removed', 'modified')
+    ),
+
+    sequence_index INTEGER NOT NULL,
+
+    PRIMARY KEY (decision_id, icd_code),
+
+    FOREIGN KEY (decision_id)
+        REFERENCES clinical_decision(decision_id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (icd_code)
+        REFERENCES icd11_taxonomy(code)
+
+);

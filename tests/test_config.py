@@ -25,6 +25,9 @@ def valid_settings_kwargs() -> dict:
         "UPSTASH_REDIS_REST_TOKEN": "redis-token",
         "LLM_PROVIDER": "groq",
         "LLM_MODEL": "test-model",
+        "EMBEDDING_PROVIDER": "sentence_transformers",
+        "EMBEDDING_MODEL": "BAAI/bge-large-en-v1.5",
+        "EMBEDDING_DIMENSIONS": 1024,
     }
 
 
@@ -55,12 +58,12 @@ def test_app_settings_load_correctly():
         "UPSTASH_REDIS_REST_TOKEN",
     ],
 )
-def test_missing_required_settings_raise_validation_error(
-    missing_field,
-):
+def test_missing_required_settings_raise_validation_error(missing_field, monkeypatch):
     kwargs = valid_settings_kwargs()
 
     kwargs.pop(missing_field)
+
+    monkeypatch.delenv(missing_field, raising=False)
 
     with pytest.raises(ValidationError):
         AppSettingsForTests(**kwargs)

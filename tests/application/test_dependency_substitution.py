@@ -58,9 +58,7 @@ def build_fake_container() -> AegisContainer:
         content_repository=content_repository,  # type: ignore[arg-type]
         clinical_decision_repository=clinical_decision_repository,  # type: ignore[arg-type]
         clinical_note_service=DefaultClinicalNoteService(clinical_note_repository),
-        normalization_service=DefaultNormalizationService(
-            content_repository, FakePHIAnonymizer()
-        ),
+        normalization_service=DefaultNormalizationService(content_repository, FakePHIAnonymizer()),
         cache_service=DefaultCacheService(FakeClinicalDecisionCacheRepository()),
         retrieval_service=DefaultRetrievalService(
             FakeEmbeddingProvider(), FakeVectorQueryProvider()

@@ -1,77 +1,33 @@
 # src/aegis/api/dependencies.py
-import os
-from functools import lru_cache
-from typing import Any
+"""
+FastAPI dependency providers.
+
+Routers retrieve the single, already-assembled ``AegisContainer`` and
+compiled LangGraph graph from ``app.state`` (populated once at startup
+by ``api/main.py``'s lifespan via ``aegis.api.bootstrap``) rather than
+constructing services, repositories, or infrastructure themselves.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
-from langchain.chat_models import BaseChatModel, init_chat_model
-from upstash_redis import Redis
-from upstash_vector import Index
 
-from aegis.config import get_settings
+if TYPE_CHECKING:
+    from langgraph.graph.state import CompiledStateGraph
 
-settings = get_settings()
-
-
-@lru_cache
-def get_chat_model() -> BaseChatModel:
-    """
-    Returns the application's default chat model.
-
-    The concrete provider (Groq, OpenAI, Gemini, etc.)
-    is selected entirely through configuration.
-    """
-
-    return init_chat_model(
-        model=settings.LLM_MODEL,
-        model_provider=settings.LLM_PROVIDER,
-        api_key=settings.GROQ_API_KEY.get_secret_value(),
-        temperature=0.0,
-    )
+    from aegis.application.container import AegisContainer
+    from aegis.graphs.state import AegisWorkflowState
 
 
-@lru_cache
-def get_vector_client() -> Index:
-    """
-    Returns a singleton Upstash Vector client.
-    """
-
-    return Index(
-        url=str(settings.UPSTASH_VECTOR_REST_URL),
-        token=settings.UPSTASH_VECTOR_REST_TOKEN.get_secret_value(),
-    )
+def get_container(request: Request) -> AegisContainer:
+    """Retrieve the application-wide ``AegisContainer`` assembled at startup."""
+    return request.app.state.container  # type: ignore[no-any-return]
 
 
-@lru_cache
-def get_redis_client() -> Redis:
-    """
-    Returns a singleton Upstash Redis client.
-    """
-
-    return Redis(
-        url=str(settings.UPSTASH_REDIS_REST_URL),
-        token=settings.UPSTASH_REDIS_REST_TOKEN.get_secret_value(),
-    )
-
-
-def get_llm_client() -> BaseChatModel:
-    # Enforces strict configuration tracking across system updates
-    api_key = os.getenv("LLM_API_KEY")
-    if not api_key:
-        raise RuntimeError("CRITICAL: Missing system LLM_API_KEY environment variable.")
-
-    return init_chat_model(
-        model="qwen/qwen3-32b",
-        model_provider="groq",
-        temperature=0.0,  # Zero temperature ensures structural determinism
-        api_key=settings.GROQ_API_KEY.get_secret_value(),
-    )
-
-
-def get_graph_checkpointer(request: Request) -> Any:
-    """
-    Retrieves the shared LangGraph checkpoint manager
-    attached during FastAPI startup.
-    """
-
-    return request.app.state.graph_checkpointer
+def get_graph(
+    request: Request,
+) -> CompiledStateGraph[AegisWorkflowState, Any, AegisWorkflowState, AegisWorkflowState]:
+    """Retrieve the compiled AEGIS LangGraph workflow assembled at startup."""
+    return request.app.state.graph  # type: ignore[no-any-return]

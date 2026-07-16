@@ -25,6 +25,18 @@ class UpstashVectorQueryProvider(VectorQueryProvider):
             token=token,
         )
 
+    def get_index_dimension(self) -> int:
+        """
+        Report the target Upstash index's actual vector dimension.
+
+        Best-effort introspection used only by the composition root's
+        embedding/vector-index compatibility check -- not part of the
+        ``VectorQueryProvider`` contract, since not every backend (e.g.
+        pgvector, Qdrant) necessarily exposes this. Callers should
+        duck-type-check for this method rather than assume it exists.
+        """
+        return self._index.info().dimension
+
     def query(
         self,
         embedding: list[float],

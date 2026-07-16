@@ -24,12 +24,28 @@ class AppSettings(BaseSettings):
     LLM_PROVIDER: str = Field(default="groq")
     LLM_MODEL: str = Field(default="qwen/qwen3-32b")
     GROQ_API_KEY: SecretStr = Field(default=...)
+    REASONING_TEMPERATURE: float = Field(default=0.0, ge=0.0)
 
     UPSTASH_VECTOR_REST_URL: HttpUrl = Field(default=...)
     UPSTASH_VECTOR_REST_TOKEN: SecretStr = Field(default=...)
 
     UPSTASH_REDIS_REST_URL: HttpUrl = Field(default=...)
     UPSTASH_REDIS_REST_TOKEN: SecretStr = Field(default=...)
+    CACHE_TTL_SECONDS: int = Field(default=60 * 60 * 24 * 30, gt=0)
+
+    # Embedding <-> vector-index compatibility boundary. There is
+    # intentionally no default: an operator must state all three
+    # explicitly, matching whatever actually populated the target
+    # Upstash Vector index, rather than the application silently
+    # assuming a provider. See EmbeddingConfiguration in api/bootstrap.py.
+    EMBEDDING_PROVIDER: str = Field(default=...)
+    EMBEDDING_MODEL: str = Field(default=...)
+    EMBEDDING_DIMENSIONS: int = Field(default=..., gt=0)
+    # Only required when EMBEDDING_PROVIDER == "openai" -- checked below.
+    OPENAI_API_KEY: SecretStr | None = Field(default=None)
+
+    RETRIEVAL_TOP_K: int = Field(default=5, gt=0)
+    RETRIEVAL_SIMILARITY_THRESHOLD: float | None = Field(default=None)
 
     # Local SQLite paths defined in your architecture map
     CLINICAL_DB_PATH: str = "data/clinical_registry.db"
@@ -67,6 +83,20 @@ class AppSettings(BaseSettings):
             or not self.UPSTASH_REDIS_REST_TOKEN.get_secret_value()
         ):
             missing_fields.append("UPSTASH_REDIS_REST_TOKEN")
+
+        if not self.EMBEDDING_PROVIDER:
+            missing_fields.append("EMBEDDING_PROVIDER")
+
+        if not self.EMBEDDING_MODEL:
+            missing_fields.append("EMBEDDING_MODEL")
+
+        if not self.EMBEDDING_DIMENSIONS:
+            missing_fields.append("EMBEDDING_DIMENSIONS")
+
+        if self.EMBEDDING_PROVIDER == "openai" and (
+            not self.OPENAI_API_KEY or not self.OPENAI_API_KEY.get_secret_value()
+        ):
+            missing_fields.append("OPENAI_API_KEY")
 
         if missing_fields:
             line_errors = cast(
