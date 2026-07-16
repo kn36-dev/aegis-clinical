@@ -71,7 +71,10 @@ if TYPE_CHECKING:
         ReasoningProvider,
     )
     from aegis.services.context_assembler import ContextAssembler, ContextAssemblyPolicy
-    from aegis.services.normalization_service import NormalizationService
+    from aegis.services.normalization_service import (
+        ClinicalNoteContentRepository,
+        NormalizationService,
+    )
     from aegis.services.persistence_service import PersistenceService
     from aegis.services.retrieval_service import RetrievalService
 
@@ -91,7 +94,7 @@ class AegisContainer:
     """
 
     clinical_note_repository: SQLiteClinicalNoteRepository
-    content_repository: SQLiteContentStore
+    content_repository: ClinicalNoteContentRepository
     clinical_decision_repository: SQLiteClinicalDecisionRepository
 
     clinical_note_service: ClinicalNoteService
@@ -136,6 +139,7 @@ def build_container(
     reasoning_model_name: str,
     icd_code_validator: ICDCodeValidator,
     phi_anonymizer: PHIAnonymizer | None = None,
+    content_repository: ClinicalNoteContentRepository | None = None,
     context_assembly_policy: ContextAssemblyPolicy | None = None,
     reasoning_policy: ReasoningPolicy | None = None,
 ) -> AegisContainer:
@@ -152,13 +156,14 @@ def build_container(
     ``reasoning_provider``, and ``icd_code_validator`` are required
     rather than defaulted: no production Redis, Upstash, CrewAI, or
     ICD-taxonomy-validating adapter exists yet (see module docstring),
-    so this function does not fabricate one. ``phi_anonymizer`` does
-    have a real production adapter (``PresidioPHIAnonymizer``) and
-    defaults to it, but remains overridable for callers that need a
-    faster test double.
+    so this function does not fabricate one. ``phi_anonymizer`` and
+    ``content_repository`` both have real production adapters
+    (``PresidioPHIAnonymizer``, ``SQLiteContentStore``) and default to
+    them, but remain overridable for callers that need a faster test
+    double.
     """
     clinical_note_repository = SQLiteClinicalNoteRepository(connection)
-    content_repository = SQLiteContentStore(connection)
+    content_repository = content_repository or SQLiteContentStore(connection)
     clinical_decision_repository = SQLiteClinicalDecisionRepository(connection)
 
     clinical_note_service = DefaultClinicalNoteService(clinical_note_repository)

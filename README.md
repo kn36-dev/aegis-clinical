@@ -112,6 +112,27 @@ Evaluation suites are maintained independently from traditional software tests. 
 
 ---
 
+# Running the Demo (No Credentials Required)
+
+A complete, credential-free run of the clinical pipeline — submission, AI-assisted recommendation, physician review, and persisted decision — is available as a single reproducible command:
+
+```bash
+make demo
+# equivalent to: uv run python scripts/demo_e2e.py
+```
+
+This drives the real FastAPI application (`aegis.api.main.app`) through its HTTP boundary using FastAPI's `TestClient` — the real lifespan, the real LangGraph workflow, and the real interrupt/resume suspension all run exactly as they would under `make dev-backend`. Every adapter that would otherwise require a network credential (Upstash Vector, Upstash Redis, Groq/CrewAI reasoning, ICD-11 taxonomy validation) is substituted with a deterministic in-memory fake, and both SQLite databases live in a temporary directory for the run. No `.env` file or API key is required.
+
+The same scenario is also expressed as an automated test in `tests/integration/test_clinical_pipeline.py`, including the cache-hit path on a repeat submission:
+
+```bash
+uv run pytest tests/integration/test_clinical_pipeline.py -v
+```
+
+See `docs/tradeoffs_and_limitations.md` — "Live-Credential Content Seeding Gap" — for the one path this demo intentionally does not attempt: a fresh submission run against the real, credential-backed adapters.
+
+---
+
 # Engineering Principles
 
 The architecture is guided by several core design principles:

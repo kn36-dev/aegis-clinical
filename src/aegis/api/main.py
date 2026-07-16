@@ -15,13 +15,17 @@ see ``aegis.api.dependencies``.
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from aegis.api.bootstrap import build_infrastructure, open_clinical_connection
 from aegis.api.routers import clinical, review
+from aegis.common.logging import get_logger
 from aegis.config import get_settings
+
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -60,8 +64,26 @@ app.add_middleware(
 )
 
 # Register all systems endpoints under a single server execution context
-app.include_router(clinical.router, prefix="/api/v1/clinical", tags=["Ingress"])
-app.include_router(review.router, prefix="/api/v1/review", tags=["HITL Review"])
+app.include_router(clinical.router, prefix="/api/v1", tags=["Ingress"])
+app.include_router(review.router, prefix="/api/v1/reviews", tags=["HITL Review"])
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """
+    Last-resort error boundary.
+
+    Routers already translate every known failure point (graph
+    invocation, state retrieval/resume) into a specific ``HTTPException``
+    via their own try/except blocks -- this handler only catches what
+    those don't: bugs and unanticipated/malformed workflow state that
+    would otherwise propagate as a raw traceback. It guarantees every
+    response leaving the API, not just the ones routers anticipated,
+    stays inside the same ``{"detail": ...}`` contract and never leaks
+    stack traces, SQL/Redis error text, or other internals.
+    """
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "An unexpected error occurred."})
 
 
 @app.get("/health")

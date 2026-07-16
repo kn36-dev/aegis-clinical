@@ -1,4 +1,4 @@
-.PHONY: dev-backend dev-frontend lint format test server-check
+.PHONY: dev-backend dev-frontend lint format test server-check demo
 
 # Run the FastAPI server on our unexcluded port
 dev-backend:
@@ -24,7 +24,14 @@ db-init:
 	uv run aegis-db init --all --reset
 
 db-seed-icd:
-	uv run aegis-db seed --icd --csv-path ./data/icd11.csv
+	uv run aegis-db seed --icd --csv-path ./data/icd11_mms_simplified.csv
+
+# Credential-free, reproducible end-to-end run of the clinical pipeline
+# (submission -> AI reasoning -> human review -> decision -> cache
+# projection) through the real FastAPI app with fake infra adapters.
+# See scripts/demo_e2e.py.
+demo:
+	uv run python scripts/demo_e2e.py
 
 # Makefile should contain these as well:
 # make init-db

@@ -19,6 +19,8 @@ src/aegis/api/
 ├── dependencies.py
 ├── schemas/
 │   ├── clinical.py
+│   ├── errors.py
+│   ├── identity.py
 │   ├── patient.py
 │   ├── review.py
 │   └── trial.py
@@ -34,7 +36,7 @@ src/aegis/api/
 
 Responsible for starting AI-powered clinical note ingestion.
 
-## POST /api/v1/clinical/ingest
+## POST /api/v1/clinical-notes (implemented -- Slice 1)
 
 Purpose
 
@@ -43,8 +45,7 @@ Starts a brand-new LangGraph workflow for processing a physician's clinical note
 Input
 
 - patient_id
-- physician_id
-- raw_clinical_note
+- content_reference
 
 Workflow
 
@@ -61,7 +62,7 @@ Redis deterministic cache lookup
 ↓
 
 (Cache Hit?)
-    ├── Yes → Return cached result
+    ├── Yes → Return cached ClinicalDecision, status=completed
     └── No
 
 ↓
@@ -78,17 +79,19 @@ CrewAI clinical reasoning
 
 ↓
 
-Pause for Human Review
+Pause for Human Review (LangGraph interrupt), status=pending_review
 
 Returns
 
-- workflow_id
-- review_id
-- workflow_status
+- workflow_id (LangGraph checkpoint thread id)
+- case_id
+- status (pending_review | completed)
+- decision_id, approved_icd_codes (only when status=completed)
 
-Example Status
-
-WAITING_FOR_REVIEW
+Resuming a pending_review workflow is
+GET/POST /api/v1/reviews/{thread_id}[/decision] (`workflow_id` returned here
+*is* that `thread_id`) -- out of scope for Slice 1, implemented in Slice 2.
+See "3. Human-in-the-Loop (HITL)" below.
 
 ---
 
@@ -172,116 +175,180 @@ Chronological timeline events with timestamps and responsible clinician.
 
 Allows physicians to review AI output before persistence.
 
-## GET /api/v1/review/pending
+**Current contract (implemented -- Slice 2)** is the LangGraph
+interrupt/resume boundary below. The `review_id`-keyed,
+`/approve`/`/reject`/`/amend`-shaped design further down this section
+was the pre-Slice-2 plan and is superseded -- see "Historical / deprecated
+design" for why it was never built as written and what, if anything, of
+it still applies.
+
+## GET /api/v1/reviews/{thread_id} (implemented -- Slice 2)
 
 Purpose
 
-Returns all pending physician reviews.
-
-Returns
-
-- review_id
-- patient
-- physician
-- creation timestamp
-- workflow status
-
----
-
-## GET /api/v1/review/{review_id}
-
-Purpose
-
-Returns every detail required for physician review.
-
-Returns
-
-- original note
-- extracted findings
-- suggested ICD-11 codes
-- confidence values
-- clinical reasoning summary
-
----
-
-## POST /api/v1/review/{review_id}/approve
-
-Purpose
-
-Accepts the AI recommendation without modification.
+Retrieve the current pending-or-completed review state for a workflow,
+identified by its LangGraph checkpoint `thread_id` (the same id returned
+as `workflow_id` by `POST /api/v1/clinical-notes`) -- there is no separate
+`review_id`; the workflow's own thread id is the review's identity.
 
 Workflow
 
-Resume paused LangGraph
+`graph.aget_state(thread_id)`
 
 ↓
 
-Persist SQLite
+Empty snapshot → 404 (no workflow for that thread)
 
 ↓
 
-Update Redis cache
+`clinical_decision` present → status=completed
 
 ↓
 
-Finish workflow
+Pending interrupt → status=pending_review
 
 Returns
 
-Workflow completed successfully.
+- workflow_id, case_id, status (pending_review | completed)
+- when pending_review: recommendation_id, reasoning_summary,
+  normalized_note_text (anonymized), recommended_icd_codes
+  (icd_code, justification, model_confidence, supporting/conflicting findings)
+- when completed: decision_id, approved_icd_codes
+
+The router only reads already-computed workflow state here -- it performs
+no ICD validation, no approval classification, and constructs no
+`ClinicalDecision`. See `aegis.api.routers.review`.
 
 ---
 
-## POST /api/v1/review/{review_id}/reject
+## POST /api/v1/reviews/{thread_id}/decision (implemented -- Slice 2)
 
 Purpose
 
-Rejects the AI recommendation.
-
-Workflow
-
-Terminate workflow
-
-↓
-
-Record audit outcome
-
-Returns
-
-Workflow rejected.
-
----
-
-## POST /api/v1/review/{review_id}/amend
-
-Purpose
-
-Allows physician edits before approval.
+Submit the physician's final set of approved ICD-11 codes and resume the
+LangGraph workflow suspended at `human_review_pending`.
 
 Input
 
-- modified ICD-11 codes
-- optional comments
+- selected_icd_codes (only the physician's final code list; no
+  accept/reject/amend distinction is made by the request or the router --
+  see below)
 
 Workflow
 
-Resume LangGraph
+`graph.aget_state(thread_id)` to read case/recommendation/patient/
+normalization identity out of the workflow's own suspended state (never
+trusted from the request)
 
 ↓
 
-Persist amended codes
+Build `PhysicianDecisionSubmission` (identity from state + codes from the
+request)
 
 ↓
 
-Update deterministic Redis cache
+`graph.ainvoke(Command(resume=submission))`
 
 ↓
 
-Complete workflow
+Graph resumes: `decide_case` (`ClinicalDecisionService`) → classifies each
+code accepted/added/removed/modified → `persist_clinical_decision`
+(`PersistenceService`, SQLite) → `cache_store` (Redis) → END
 
 Returns
 
-Updated workflow status.
+- workflow_id, case_id, decision_id, approved_icd_codes (each with its
+  disposition, as classified by `ClinicalDecisionService`)
+
+**What the router does not do:** classify ACCEPTED vs. ADDED vs. REMOVED
+vs. MODIFIED, call `ClinicalDecisionService`/`PersistenceService`
+directly, or persist/cache anything itself. There is also no separate
+`/approve`, `/reject`, or `/amend` endpoint -- a single `selected_icd_codes`
+list covers all three cases, and the graph (not the router) determines
+each code's disposition. See `aegis.api.routers.review`.
+
+---
+
+## Historical / deprecated design (pre-Slice 2 -- not implemented as written)
+
+The plan below predates the LangGraph interrupt/resume boundary being
+wired up and assumed a `review_id`-keyed resource with separate
+`/approve`, `/reject`, `/amend` actions and its own "pending reviews list"
+endpoint. None of this was ever built this way, and it should not be read
+as describing current or planned-next behavior -- the actual review
+identity is the workflow's own `thread_id`, and approve/reject/amend
+collapse into the single `selected_icd_codes` payload above, since that
+classification is `ClinicalDecisionService`'s job, not the router's.
+
+`GET /api/v1/review/pending` (a list of all pending reviews across
+workflows) is a genuinely distinct capability nothing above provides --
+it would require enumerating checkpoints across threads, not resuming
+one. If a "review inbox" is wanted later, it belongs to whichever slice
+introduces workflow enumeration/listing (see "5. Workflow Monitoring"
+below, which has the same gap for `GET /api/v1/workflows/{workflow_id}`
+singular lookup vs. listing) -- it is out of scope for, and not a gap in,
+Slice 2's interrupt/resume boundary.
+
+~~GET /api/v1/review/pending~~
+~~GET /api/v1/review/{review_id}~~
+~~POST /api/v1/review/{review_id}/approve~~
+~~POST /api/v1/review/{review_id}/reject~~
+~~POST /api/v1/review/{review_id}/amend~~
+
+---
+
+# Identity Boundary (implemented -- Slice 4)
+
+Purpose
+
+Give caller identity (physician, institution, ...) a defined place to
+enter AEGIS from HTTP, without building authentication, authorization,
+or user management. Routers should never read `Request`/headers
+directly to determine "who is calling"; they depend on
+`get_identity_context` instead.
+
+```
+HTTP
+  ↓
+Identity Context Adapter   (aegis.api.dependencies.get_identity_context)
+  ↓
+RequestIdentityContext     (aegis.api.schemas.identity)
+  ↓
+Future Authorization / Audit
+```
+
+Implemented
+
+- `RequestIdentityContext` (`actor_id`, `actor_type`,
+  `institution_reference`, all optional) -- the DTO identity is carried
+  in at the API boundary.
+- `get_identity_context(request)` -- a FastAPI dependency that relays
+  whatever a future authentication adapter has attached to
+  `request.state.identity_context`; it never reads headers/cookies/
+  tokens itself and never fabricates a default actor.
+- `POST /api/v1/clinical-notes`, `GET /api/v1/reviews/{thread_id}`, and
+  `POST /api/v1/reviews/{thread_id}/decision` all accept
+  `identity: RequestIdentityContext = Depends(get_identity_context)`.
+
+Not implemented (deliberately out of scope for this slice)
+
+- Authentication (no OAuth, JWT validation, SSO, or external identity
+  provider).
+- Authorization (no `can_approve()`, `is_physician()`, permission
+  checks, or RBAC engine).
+- Threading identity into `ClinicalNoteSubmission`,
+  `PhysicianDecisionSubmission`, `AegisWorkflowState`, or
+  `ClinicalDecision` -- none of those runtime domain contracts define
+  an actor/institution field today (see
+  `runtime_domain_contracts/clinical_decision.md`'s Identity section),
+  and adding one is a contract change outside this slice's scope.
+- Any audit trail construction or persistence.
+
+Until a real authentication adapter exists, every request resolves to
+an all-`None` `RequestIdentityContext` -- read as "identity not yet
+established," not as "anonymous" or "unauthorized." No claim of secure
+authentication, HIPAA compliance, or equivalent is made by this
+boundary.
 
 ---
 
