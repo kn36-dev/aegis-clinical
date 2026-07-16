@@ -23,6 +23,10 @@ CLINICAL_MIGRATION_FILES = [
     "0006_init_trial_target_code",
     "0007_init_trial_match",
     "0008_init_human_review_log",
+    "0009_init_clinical_note_content",
+    "0010_add_content_reference_to_patient_case",
+    "0011_init_clinical_decision",
+    "0012_init_approved_icd_classification",
 ]
 
 GRAPH_MIGRATION_FILES = ["0001_init_checkpoint_blob"]

@@ -1,18 +1,28 @@
 -- ============================================================================
--- 0009: Clinical Note Content - Sensitive Clinical Narrative
+-- 0009: Clinical Note Content - Content Storage Provider boundary
 -- ============================================================================
+--
+-- Backs the ClinicalNoteContentRepository protocol
+-- (aegis.services.normalization_service). content_reference is the opaque
+-- pointer already carried on ClinicalNote; it is the primary key here so a
+-- reference can be resolved without depending on case_id cardinality.
+--
+-- This table currently stores plaintext content_payload. It is intentionally
+-- a Content Storage Provider boundary, not an encryption boundary: no
+-- encryption is assumed or implemented here. A future encrypted-at-rest
+-- implementation (e.g. an EncryptedClinicalContentStore) can replace the
+-- SQLite adapter behind ClinicalNoteContentRepository without changing this
+-- table's role in the schema.
 
 CREATE TABLE IF NOT EXISTS clinical_note_content (
 
-    case_id TEXT PRIMARY KEY,
+    content_reference TEXT PRIMARY KEY,
 
-    encrypted_raw_note BLOB NOT NULL,
+    case_id TEXT NOT NULL,
 
-    encrypted_anonymized_note BLOB,
+    content_payload TEXT NOT NULL,
 
-    payload_checksum TEXT NOT NULL,
-
-    encryption_version INTEGER NOT NULL DEFAULT 1,
+    checksum TEXT NOT NULL,
 
     created_at TEXT NOT NULL,
 
