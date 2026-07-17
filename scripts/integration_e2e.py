@@ -28,6 +28,8 @@ import tempfile
 from pathlib import Path
 from uuid import uuid4
 
+from aegis.phi.presidio import PresidioPHIAnonymizer
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 sys.path.insert(0, str(_REPO_ROOT))
@@ -42,7 +44,6 @@ from tests.application.fakes import (  # noqa: E402
     FakeContentRepository,
     FakeEmbeddingProvider,
     FakeICDCodeValidator,
-    FakePHIAnonymizer,
     FakeReasoningProvider,
     FakeVectorQueryProvider,
 )
@@ -146,7 +147,7 @@ def main() -> None:
             reasoning_provider=FakeReasoningProvider(),
             reasoning_model_name="fake-model",
             icd_code_validator=FakeICDCodeValidator(),
-            phi_anonymizer=FakePHIAnonymizer(),
+            phi_anonymizer=PresidioPHIAnonymizer(),
             content_repository=FakeContentRepository(
                 content_by_reference={content_reference: SAMPLE_NOTE_TEXT}
             ),
