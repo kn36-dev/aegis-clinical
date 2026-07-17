@@ -28,6 +28,7 @@ import tempfile
 from pathlib import Path
 from uuid import uuid4
 
+from aegis.embeddings.sentence_transformers import SentenceTransformersEmbeddingProvider
 from aegis.phi.presidio import PresidioPHIAnonymizer
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -42,7 +43,6 @@ from tests.application.fakes import (  # noqa: E402
     KNOWN_ICD_CODE,
     FakeClinicalDecisionCacheRepository,
     FakeContentRepository,
-    FakeEmbeddingProvider,
     FakeICDCodeValidator,
     FakeReasoningProvider,
     FakeVectorQueryProvider,
@@ -142,7 +142,7 @@ def main() -> None:
         container = build_container(
             connection,
             cache_repository=FakeClinicalDecisionCacheRepository(),
-            embedding_provider=FakeEmbeddingProvider(),
+            embedding_provider=SentenceTransformersEmbeddingProvider(),
             vector_query_provider=FakeVectorQueryProvider(),
             reasoning_provider=FakeReasoningProvider(),
             reasoning_model_name="fake-model",
