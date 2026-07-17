@@ -23,6 +23,16 @@ input across the interrupt/resume boundary into ``decide_case``, is not
 a ``runtime_domain_contracts`` model, and must never be persisted,
 cached, or otherwise treated as institutional truth in its own right --
 that role belongs solely to the ``ClinicalDecision`` it helps produce.
+
+``case_id`` is an optional entry field, not a domain artifact: it lets a
+caller that already knows the canonical workflow identity (the HTTP
+ingress layer, which must fix the LangGraph checkpoint ``thread_id``
+*before* invoking the graph, ahead of ``create_clinical_note`` ever
+running) pass that same identity through to
+``ClinicalNoteService.create_clinical_note`` so it becomes
+``ClinicalNote.case_id`` too, rather than a second, unrelated id being
+minted internally. Callers that omit it are unaffected: the service
+falls back to its own ``IdentifierGenerator`` exactly as before.
 """
 
 from __future__ import annotations
@@ -34,6 +44,8 @@ from typing import Any, NotRequired, Protocol, TypedDict
 # StateGraph._add_schema), so these names must exist in this module's
 # runtime namespace -- moving them under `if TYPE_CHECKING:` breaks graph
 # construction even though ruff's TCH rule would otherwise suggest it.
+from uuid import UUID  # noqa: TCH003
+
 from aegis.models.clinical_decision import ClinicalDecision  # noqa: TCH001
 from aegis.models.clinical_note import ClinicalNote  # noqa: TCH001
 from aegis.models.coding_recommendation import CodingRecommendation  # noqa: TCH001
@@ -48,6 +60,7 @@ from aegis.models.workflow_commands import (  # noqa: TCH001
 
 class AegisWorkflowState(TypedDict):
     submission: ClinicalNoteSubmission
+    case_id: NotRequired[UUID]
     clinical_note: NotRequired[ClinicalNote]
     normalized_note: NotRequired[NormalizedClinicalNote]
     retrieval_result: NotRequired[RetrievalResult]

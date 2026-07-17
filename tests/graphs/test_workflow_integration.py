@@ -79,10 +79,12 @@ class FakeClinicalNoteService(ClinicalNoteService):
     def __init__(self) -> None:
         self.calls: list[ClinicalNoteSubmission] = []
 
-    def create_clinical_note(self, submission: ClinicalNoteSubmission) -> ClinicalNote:
+    def create_clinical_note(
+        self, submission: ClinicalNoteSubmission, case_id: UUID | None = None
+    ) -> ClinicalNote:
         self.calls.append(submission)
         return ClinicalNote(
-            case_id=FIXED_CASE_ID,
+            case_id=case_id or FIXED_CASE_ID,
             patient_id=submission.patient_id,
             content_reference=submission.content_reference,
             created_at=FIXED_TIME,

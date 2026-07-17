@@ -149,6 +149,37 @@ class TestClinicalNoteCreation:
         assert isinstance(clinical_note.case_id, UUID)
         assert clinical_note.created_at.tzinfo is not None
 
+    def test_caller_supplied_case_id_is_used_verbatim(
+        self,
+        service: DefaultClinicalNoteService,
+        submission: ClinicalNoteSubmission,
+        fixed_case_id: UUID,
+    ):
+        """
+        A caller-supplied ``case_id`` (e.g. the HTTP ingress layer fixing
+        a LangGraph checkpoint identity ahead of graph invocation) must
+        be assigned verbatim, taking priority over the injected
+        ``IdentifierGenerator`` -- this is what lets ``ClinicalNote.case_id``,
+        the LangGraph ``thread_id``, and ``patient_case.thread_id`` all be
+        the same value end to end.
+        """
+        override_case_id = uuid4()
+        assert override_case_id != fixed_case_id
+
+        clinical_note = service.create_clinical_note(submission, case_id=override_case_id)
+
+        assert clinical_note.case_id == override_case_id
+
+    def test_omitted_case_id_falls_back_to_identifier_generator(
+        self,
+        service: DefaultClinicalNoteService,
+        submission: ClinicalNoteSubmission,
+        fixed_case_id: UUID,
+    ):
+        clinical_note = service.create_clinical_note(submission, case_id=None)
+
+        assert clinical_note.case_id == fixed_case_id
+
 
 class TestClinicalNoteImmutableConstruction:
     def test_created_note_is_immutable(

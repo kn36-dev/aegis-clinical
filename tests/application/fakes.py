@@ -15,10 +15,31 @@ from uuid import UUID, uuid4
 
 from aegis.embeddings.base import EmbeddingProvider
 from aegis.indexing.documents import RepresentationDocument, VectorDocument
+from aegis.infrastructure.memory.clinical_decision_cache_repository import (
+    FakeClinicalDecisionCacheRepository,
+)
+from aegis.infrastructure.memory.content_repository import FakeContentRepository
 from aegis.models.normalized_clinical_note import NormalizedClinicalNote
 from aegis.phi.base import PHIAnonymizer
 from aegis.retrieval.providers.base import VectorMatch, VectorQueryProvider
 from aegis.services.clinical_reasoning_service import ReasoningProvider
+
+__all__ = [
+    "FIXED_TIME",
+    "KNOWN_ICD_CODE",
+    "FakeClinicalNoteRepository",
+    "FakeContentRepository",
+    "FakePHIAnonymizer",
+    "FakeClinicalDecisionCacheRepository",
+    "FakeEmbeddingProvider",
+    "FakeVectorQueryProvider",
+    "make_vector_match",
+    "FakeReasoningProvider",
+    "FakeICDCodeValidator",
+    "FakeClinicalDecisionRepository",
+    "make_normalized_note",
+    "make_submission_kwargs",
+]
 
 if TYPE_CHECKING:
     from aegis.models.clinical_decision import ClinicalDecision
@@ -40,34 +61,11 @@ class FakeClinicalNoteRepository:
         self.saved[clinical_note.case_id] = clinical_note
 
 
-class FakeContentRepository:
-    """In-memory stand-in for ``ClinicalNoteContentRepository``."""
-
-    def __init__(self, content_by_reference: dict[str, str] | None = None) -> None:
-        self._content = content_by_reference or {}
-
-    def get_content(self, content_reference: str) -> str:
-        return self._content.get(content_reference, "Patient reports no fever. Mild cough.")
-
-
 class FakePHIAnonymizer(PHIAnonymizer):
     """Identity anonymizer -- avoids loading the real Presidio/spaCy stack in tests."""
 
     def anonymize(self, text: str) -> str:
         return text
-
-
-class FakeClinicalDecisionCacheRepository:
-    """In-memory stand-in for ``ClinicalDecisionCacheRepository``."""
-
-    def __init__(self) -> None:
-        self._store: dict[str, ClinicalDecision] = {}
-
-    def get(self, cache_key: str) -> ClinicalDecision | None:
-        return self._store.get(cache_key)
-
-    def set(self, cache_key: str, decision: ClinicalDecision) -> None:
-        self._store[cache_key] = decision
 
 
 class FakeEmbeddingProvider(EmbeddingProvider):

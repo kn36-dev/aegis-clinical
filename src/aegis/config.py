@@ -1,6 +1,6 @@
 # src/aegis/config.py
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pydantic import Field, HttpUrl, SecretStr, ValidationError
 
@@ -21,16 +21,28 @@ class AppSettings(BaseSettings):
 
     ENVIRONMENT: str = Field(default="development")
 
+    # Selects which collaborators the composition root (api/bootstrap.py)
+    # assembles for the cache, reasoning, and content-repository
+    # boundaries -- see CLAUDE.md's demo-profile design. "production"
+    # requires GROQ_API_KEY and the Upstash Redis credentials below;
+    # "demo" does not, since those three collaborators are replaced
+    # with deterministic in-memory adapters. Upstash Vector and the
+    # embedding provider are unconditionally required in both profiles:
+    # the demo profile keeps real semantic retrieval.
+    AEGIS_PROFILE: Literal["production", "demo"] = Field(default="production")
+
     LLM_PROVIDER: str = Field(default="groq")
     LLM_MODEL: str = Field(default="qwen/qwen3-32b")
-    GROQ_API_KEY: SecretStr = Field(default=...)
+    # Required only when AEGIS_PROFILE == "production" -- checked below.
+    GROQ_API_KEY: SecretStr | None = Field(default=None)
     REASONING_TEMPERATURE: float = Field(default=0.0, ge=0.0)
 
     UPSTASH_VECTOR_REST_URL: HttpUrl = Field(default=...)
     UPSTASH_VECTOR_REST_TOKEN: SecretStr = Field(default=...)
 
-    UPSTASH_REDIS_REST_URL: HttpUrl = Field(default=...)
-    UPSTASH_REDIS_REST_TOKEN: SecretStr = Field(default=...)
+    # Required only when AEGIS_PROFILE == "production" -- checked below.
+    UPSTASH_REDIS_REST_URL: HttpUrl | None = Field(default=None)
+    UPSTASH_REDIS_REST_TOKEN: SecretStr | None = Field(default=None)
     CACHE_TTL_SECONDS: int = Field(default=60 * 60 * 24 * 30, gt=0)
 
     # Embedding <-> vector-index compatibility boundary. There is
@@ -63,8 +75,18 @@ class AppSettings(BaseSettings):
 
         missing_fields: list[str] = []
 
-        if not self.GROQ_API_KEY or not self.GROQ_API_KEY.get_secret_value():
-            missing_fields.append("GROQ_API_KEY")
+        if self.AEGIS_PROFILE == "production":
+            if not self.GROQ_API_KEY or not self.GROQ_API_KEY.get_secret_value():
+                missing_fields.append("GROQ_API_KEY")
+
+            if not self.UPSTASH_REDIS_REST_URL:
+                missing_fields.append("UPSTASH_REDIS_REST_URL")
+
+            if (
+                not self.UPSTASH_REDIS_REST_TOKEN
+                or not self.UPSTASH_REDIS_REST_TOKEN.get_secret_value()
+            ):
+                missing_fields.append("UPSTASH_REDIS_REST_TOKEN")
 
         if not self.UPSTASH_VECTOR_REST_URL:
             missing_fields.append("UPSTASH_VECTOR_REST_URL")
@@ -74,15 +96,6 @@ class AppSettings(BaseSettings):
             or not self.UPSTASH_VECTOR_REST_TOKEN.get_secret_value()
         ):
             missing_fields.append("UPSTASH_VECTOR_REST_TOKEN")
-
-        if not self.UPSTASH_REDIS_REST_URL:
-            missing_fields.append("UPSTASH_REDIS_REST_URL")
-
-        if (
-            not self.UPSTASH_REDIS_REST_TOKEN
-            or not self.UPSTASH_REDIS_REST_TOKEN.get_secret_value()
-        ):
-            missing_fields.append("UPSTASH_REDIS_REST_TOKEN")
 
         if not self.EMBEDDING_PROVIDER:
             missing_fields.append("EMBEDDING_PROVIDER")

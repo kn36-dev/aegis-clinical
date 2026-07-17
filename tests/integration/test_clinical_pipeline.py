@@ -170,6 +170,61 @@ def test_full_note_lifecycle_submit_review_decision(
     assert completed_body["decision_id"] == decision_body["decision_id"]
 
 
+def test_canonical_workflow_identity_matches_across_boundaries(
+    demo_client: tuple[TestClient, str, sqlite3.Connection],
+) -> None:
+    """
+    ``case_id`` is the single canonical workflow identity: the same value
+    must appear as ``workflow_id`` (the LangGraph checkpoint ``thread_id``),
+    as the persisted ``patient_case.thread_id``, and as the identity
+    review resume operates under -- with no second, orphaned id minted
+    anywhere along the way (see the architecture conformance audit's
+    "Fix canonical workflow identity ownership" finding).
+    """
+    client, content_reference, connection = demo_client
+    patient_id = uuid4()
+    _seed_patient_identity(connection, patient_id)
+
+    submit_response = client.post(
+        "/api/v1/clinical-notes",
+        json={"patient_id": str(patient_id), "content_reference": content_reference},
+    )
+    assert submit_response.status_code == 202
+    submit_body = submit_response.json()
+
+    # (1) Initial submission creates exactly one canonical workflow identity.
+    workflow_id = submit_body["workflow_id"]
+    case_id = submit_body["case_id"]
+    assert workflow_id == case_id
+
+    # (2) Persisted thread_id equals the LangGraph checkpoint thread_id.
+    rows = connection.execute(
+        "SELECT case_id, thread_id FROM patient_case WHERE case_id = ?;",
+        (case_id,),
+    ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["case_id"] == case_id
+    assert rows[0]["thread_id"] == workflow_id
+
+    # (3) Review resume reads and reports that same identity.
+    pending_review = client.get(f"/api/v1/reviews/{workflow_id}")
+    assert pending_review.status_code == 200
+    assert pending_review.json()["case_id"] == case_id
+
+    decision_response = client.post(
+        f"/api/v1/reviews/{workflow_id}/decision",
+        json={"selected_icd_codes": [KNOWN_ICD_CODE]},
+    )
+    assert decision_response.status_code == 200
+    assert decision_response.json()["case_id"] == case_id
+
+    # (4) No orphan workflow ids: exactly one patient_case row exists for
+    # this submission, keyed by the same identity throughout.
+    all_rows = connection.execute("SELECT case_id, thread_id FROM patient_case;").fetchall()
+    assert len(all_rows) == 1
+    assert all_rows[0]["case_id"] == all_rows[0]["thread_id"] == case_id
+
+
 def test_repeat_submission_with_same_content_hits_cache(
     demo_client: tuple[TestClient, str, sqlite3.Connection],
 ) -> None:

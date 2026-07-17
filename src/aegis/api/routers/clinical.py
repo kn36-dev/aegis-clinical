@@ -52,21 +52,23 @@ async def submit_clinical_note(
     """
     Submit a clinical note into the AEGIS workflow graph.
 
-    Builds a ``ClinicalNoteSubmission`` from the request, invokes the
-    graph retrieved from application state under a freshly generated
-    workflow (checkpoint thread) id, and maps the resulting terminal
-    state -- either a workflow that completed with a ``ClinicalDecision``
-    already available, or one suspended at the ``human_review_pending``
-    interrupt -- into a response. This router only detects which of the
-    two the graph reports; the reason (cache hit, or any other internal
-    workflow decision) is the graph/services' concern, not this
-    adapter's. Resuming a pending review is out of scope here; see
-    Slice 2.
+    Builds a ``ClinicalNoteSubmission`` from the request, generates the
+    canonical ``case_id`` for this workflow run, invokes the graph
+    retrieved from application state under that id as both the
+    checkpoint ``thread_id`` and ``state["case_id"]``, and maps the
+    resulting terminal state -- either a workflow that completed with a
+    ``ClinicalDecision`` already available, or one suspended at the
+    ``human_review_pending`` interrupt -- into a response. This router
+    only detects which of the two the graph reports; the reason (cache
+    hit, or any other internal workflow decision) is the graph/services'
+    concern, not this adapter's. Resuming a pending review is out of
+    scope here; see Slice 2.
 
-    ``identity`` is the Slice 4 identity boundary: it is resolved
-    through ``get_identity_context`` rather than read from headers here,
-    and is not yet threaded into ``ClinicalNoteSubmission`` or
-    ``AegisWorkflowState`` -- neither defines an actor field today (see
+    ``identity`` here is the Slice 4 *caller* identity boundary --
+    distinct from ``case_id``, the workflow/case identity above. It is
+    resolved through ``get_identity_context`` rather than read from
+    headers here, and is not yet threaded into ``ClinicalNoteSubmission``
+    -- that model defines no actor field today (see
     ``aegis.api.schemas.identity``) -- so accepting it does not change
     this endpoint's business behavior. It exists so a future
     authorization/audit layer has a place to attach.
@@ -75,17 +77,22 @@ async def submit_clinical_note(
         patient_id=payload.patient_id,
         content_reference=payload.content_reference,
     )
-    # TODO: workflow_id is generated here as the LangGraph checkpoint
-    # thread id purely because no workflow-runtime-owned identity exists
-    # yet for this HTTP adapter to read instead. Workflow identity
-    # generation belongs to the workflow runtime layer, not the HTTP
-    # adapter -- revisit once that ownership boundary is designed
-    # (out of scope for Slice 1).
-    workflow_id = uuid4()
-    config = {"configurable": {"thread_id": str(workflow_id)}}
+    # case_id is the canonical workflow identity (see
+    # runtime_domain_contracts/clinical_note.md, "Created by: Application
+    # ingress after request validation"). It must be generated here,
+    # ahead of graph invocation, because LangGraph's checkpoint
+    # ``thread_id`` has to be fixed in ``config`` before ``ainvoke`` runs
+    # -- before ``create_clinical_note`` (the first node) has a chance to
+    # assign identity itself. Passing it through as ``state["case_id"]``
+    # makes ``ClinicalNoteService`` assign this exact value to the
+    # resulting ``ClinicalNote`` instead of minting an unrelated one, so
+    # ``patient_case.thread_id``, the LangGraph checkpoint thread id, and
+    # this case's identity are always the same value end to end.
+    case_id = uuid4()
+    config = {"configurable": {"thread_id": str(case_id)}}
 
     try:
-        result = await graph.ainvoke({"submission": submission}, config=config)
+        result = await graph.ainvoke({"submission": submission, "case_id": case_id}, config=config)
     except Exception as exc:
         raise HTTPException(
             status_code=502,
@@ -97,7 +104,7 @@ async def submit_clinical_note(
         decision = result["clinical_decision"]
         response.status_code = 201
         return ClinicalNoteIngestionResponse(
-            workflow_id=workflow_id,
+            workflow_id=case_id,
             case_id=decision.case_id,
             status=WorkflowStatus.COMPLETED,
             decision_id=decision.decision_id,
@@ -112,7 +119,7 @@ async def submit_clinical_note(
 
     if "__interrupt__" in result:
         return ClinicalNoteIngestionResponse(
-            workflow_id=workflow_id,
+            workflow_id=case_id,
             case_id=result["clinical_note"].case_id,
             status=WorkflowStatus.PENDING_REVIEW,
         )

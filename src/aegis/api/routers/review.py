@@ -43,13 +43,15 @@ def _thread_config(thread_id: UUID) -> dict[str, Any]:
     """
     Build the LangGraph ``configurable.thread_id`` for a review's workflow.
 
-    ``thread_id`` here is exactly the ``workflow_id`` ``POST
-    /api/v1/clinical-notes`` returns (see ``aegis.api.routers.clinical``,
-    where it is generated as a bare ``uuid4()`` since no workflow-runtime-
-    owned identity exists yet). This router treats it as-is rather than
-    introducing a separate review identity -- that ownership boundary is
-    still adapter-side, not workflow-runtime-side, and is unchanged by
-    this router.
+    ``thread_id`` here is exactly ``case_id`` -- the canonical workflow
+    identity ``POST /api/v1/clinical-notes`` generates ahead of graph
+    invocation and ``ClinicalNoteService`` assigns to the resulting
+    ``ClinicalNote`` (see ``aegis.api.routers.clinical``). It is also
+    what ``patient_case.thread_id`` persists (``str(case_id)``, see
+    ``SQLiteClinicalNoteRepository``). This router treats it as-is
+    rather than introducing a separate review identity, so the same
+    value identifies the case everywhere: persisted state, the LangGraph
+    checkpoint, and this review resume boundary.
     """
     return {"configurable": {"thread_id": str(thread_id)}}
 

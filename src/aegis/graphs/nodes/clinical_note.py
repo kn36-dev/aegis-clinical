@@ -5,7 +5,10 @@ Thin LangGraph wrapper around ``ClinicalNoteService``: turns the
 workflow's input ``ClinicalNoteSubmission`` into the immutable
 ``ClinicalNote`` artifact every downstream node operates on. Contains no
 business logic of its own -- construction and persistence stay owned by
-the service.
+the service. Relays ``state["case_id"]`` through unchanged when the
+caller supplied one (the canonical workflow identity fixed by the HTTP
+ingress layer before invoking the graph); the service itself decides
+whether to use it or fall back to its own identifier generator.
 """
 
 from __future__ import annotations
@@ -23,7 +26,9 @@ def make_create_clinical_note_node(
     """Bind ``clinical_note_service`` into a LangGraph node callable."""
 
     async def create_clinical_note(state: AegisWorkflowState) -> dict[str, Any]:
-        clinical_note = clinical_note_service.create_clinical_note(state["submission"])
+        clinical_note = clinical_note_service.create_clinical_note(
+            state["submission"], case_id=state.get("case_id")
+        )
         return {"clinical_note": clinical_note}
 
     return create_clinical_note

@@ -30,6 +30,13 @@ from aegis.database.repositories.icd_repository import ICDRepository
 from aegis.embeddings.openai import OpenAIEmbeddingProvider
 from aegis.embeddings.sentence_transformers import SentenceTransformersEmbeddingProvider
 from aegis.infrastructure.crewai.reasoning_provider import CrewAIReasoningProvider
+from aegis.infrastructure.memory.clinical_decision_cache_repository import (
+    FakeClinicalDecisionCacheRepository,
+)
+from aegis.infrastructure.memory.content_repository import FakeContentRepository
+from aegis.infrastructure.memory.deterministic_reasoning_provider import (
+    DeterministicTopCandidateReasoningProvider,
+)
 from aegis.infrastructure.sqlite.icd_code_validator import SQLiteICDCodeValidator
 from aegis.infrastructure.upstash.clinical_decision_cache_repository import (
     UpstashClinicalDecisionCacheRepository,
@@ -40,8 +47,41 @@ if TYPE_CHECKING:
     from aegis.config import AppSettings
     from aegis.embeddings.base import EmbeddingProvider
     from aegis.retrieval.providers.base import VectorQueryProvider
+    from aegis.services.cache_service import ClinicalDecisionCacheRepository
+    from aegis.services.clinical_reasoning_service import ReasoningProvider
+    from aegis.services.normalization_service import ClinicalNoteContentRepository
 
 _KNOWN_EMBEDDING_PROVIDERS = ("openai", "sentence_transformers")
+
+# A small, fixed set of sample notes the demo profile can resolve
+# content_reference against. This exists because of the documented
+# "Live-Credential Content Seeding Gap" (docs/tradeoffs_and_limitations.md):
+# the real SQLiteContentStore cannot associate content with a
+# content_reference before ClinicalNoteService has generated a case_id,
+# so a fresh submission against it always 502s regardless of profile.
+# The demo profile's frontend is expected to submit one of these known
+# references rather than arbitrary freshly-minted ones.
+DEMO_SAMPLE_NOTES: dict[str, str] = {
+    "content-store://demo/acute-diarrhea": (
+        "Patient presents with acute watery diarrhea and mild dehydration. "
+        "No fever. No blood in stool. Onset 12 hours ago."
+    ),
+    "content-store://demo/productive-cough": (
+        "Patient reports a productive cough with green sputum for five days, "
+        "low-grade fever, and mild shortness of breath on exertion."
+    ),
+    "content-store://demo/migraine-with-aura": (
+        "Patient describes recurrent unilateral throbbing headache preceded by "
+        "visual aura, photophobia, and nausea, lasting several hours."
+    ),
+}
+
+# Reasoning model identifier recorded on demo-profile CodingRecommendations.
+# Distinct from settings.LLM_MODEL (which names the real Groq/Qwen model)
+# so a persisted demo-profile record is never mistaken for a real LLM
+# reasoning pass -- mirrors "fake-model" already used by
+# scripts/demo_e2e.py and tests/integration/test_clinical_pipeline.py.
+DEMO_REASONING_MODEL_NAME = "deterministic-demo-reasoning"
 
 
 class EmbeddingCompatibilityError(RuntimeError):
@@ -195,11 +235,84 @@ def open_clinical_connection(settings: AppSettings) -> sqlite3.Connection:
     return connection
 
 
+def build_cache_repository(settings: AppSettings) -> ClinicalDecisionCacheRepository:
+    """
+    Construct the ``ClinicalDecisionCacheRepository`` named by
+    ``settings.AEGIS_PROFILE``.
+
+    Demo profile uses the deterministic in-memory adapter: cache-hit
+    routing (``graphs.workflow._route_after_cache_lookup``) is
+    demonstrated identically either way, since that edge is deterministic
+    code operating on whatever ``CacheService`` reports, not on which
+    concrete store backs it. Only the production profile needs the real
+    Redis-backed adapter's persistence-across-restarts and shared-cache
+    behavior.
+    """
+    if settings.AEGIS_PROFILE == "demo":
+        return FakeClinicalDecisionCacheRepository()
+
+    assert settings.UPSTASH_REDIS_REST_URL is not None
+    assert settings.UPSTASH_REDIS_REST_TOKEN is not None
+    return UpstashClinicalDecisionCacheRepository(
+        url=str(settings.UPSTASH_REDIS_REST_URL),
+        token=settings.UPSTASH_REDIS_REST_TOKEN.get_secret_value(),
+        ttl_seconds=settings.CACHE_TTL_SECONDS,
+    )
+
+
+def build_reasoning_provider(settings: AppSettings) -> ReasoningProvider:
+    """
+    Construct the ``ReasoningProvider`` named by ``settings.AEGIS_PROFILE``.
+
+    Demo profile uses ``DeterministicTopCandidateReasoningProvider``
+    rather than Groq/CrewAI: it removes the one external dependency most
+    likely to fail or rate-limit during a live demo, while still
+    reasoning over the same real ``ReasoningContext`` real retrieval
+    produced -- see that class's docstring for why a naive hardcoded-code
+    fake cannot satisfy ``ClinicalReasoningService``'s validation once
+    retrieval is real.
+    """
+    if settings.AEGIS_PROFILE == "demo":
+        return DeterministicTopCandidateReasoningProvider()
+
+    assert settings.GROQ_API_KEY is not None
+    return CrewAIReasoningProvider(
+        provider=settings.LLM_PROVIDER,
+        model=settings.LLM_MODEL,
+        api_key=settings.GROQ_API_KEY.get_secret_value(),
+        temperature=settings.REASONING_TEMPERATURE,
+    )
+
+
+def build_content_repository(settings: AppSettings) -> ClinicalNoteContentRepository | None:
+    """
+    Construct the ``ClinicalNoteContentRepository`` override named by
+    ``settings.AEGIS_PROFILE``, or ``None`` to let ``build_container``
+    default to the real ``SQLiteContentStore``.
+
+    Demo profile substitutes the in-memory adapter pre-seeded with
+    ``DEMO_SAMPLE_NOTES`` -- see that constant's docstring for why this
+    is not a demo-mode preference but a workaround for the documented
+    "Live-Credential Content Seeding Gap", which blocks a fresh
+    submission against the real content store in *either* profile today.
+    """
+    if settings.AEGIS_PROFILE == "demo":
+        return FakeContentRepository(content_by_reference=DEMO_SAMPLE_NOTES)
+    return None
+
+
 def build_infrastructure(settings: AppSettings, connection: sqlite3.Connection) -> AegisContainer:
     """
     Construct every infrastructure adapter from ``settings``, validate
     the embedding/vector-index compatibility boundary, and assemble the
     full ``AegisContainer``.
+
+    Embedding, vector retrieval, and ICD taxonomy validation are
+    constructed identically regardless of ``settings.AEGIS_PROFILE`` --
+    both profiles run the same real semantic retrieval pipeline against
+    the same real Upstash Vector index. Only ``build_cache_repository``,
+    ``build_reasoning_provider``, and ``build_content_repository`` branch
+    on profile, each in exactly one place.
 
     Raises ``EmbeddingCompatibilityError`` immediately -- before
     ``build_container`` is ever called -- if the configured embedding
@@ -210,25 +323,17 @@ def build_infrastructure(settings: AppSettings, connection: sqlite3.Connection) 
     vector_query_provider = build_vector_query_provider(settings)
     validate_embedding_compatibility(embedding_config, embedding_provider, vector_query_provider)
 
-    cache_repository = UpstashClinicalDecisionCacheRepository(
-        url=str(settings.UPSTASH_REDIS_REST_URL),
-        token=settings.UPSTASH_REDIS_REST_TOKEN.get_secret_value(),
-        ttl_seconds=settings.CACHE_TTL_SECONDS,
-    )
     icd_code_validator = SQLiteICDCodeValidator(ICDRepository(connection))
-    reasoning_provider = CrewAIReasoningProvider(
-        provider=settings.LLM_PROVIDER,
-        model=settings.LLM_MODEL,
-        api_key=settings.GROQ_API_KEY.get_secret_value(),
-        temperature=settings.REASONING_TEMPERATURE,
-    )
 
     return build_container(
         connection,
-        cache_repository=cache_repository,
+        cache_repository=build_cache_repository(settings),
         embedding_provider=embedding_provider,
         vector_query_provider=vector_query_provider,
-        reasoning_provider=reasoning_provider,
-        reasoning_model_name=settings.LLM_MODEL,
+        reasoning_provider=build_reasoning_provider(settings),
+        reasoning_model_name=(
+            DEMO_REASONING_MODEL_NAME if settings.AEGIS_PROFILE == "demo" else settings.LLM_MODEL
+        ),
         icd_code_validator=icd_code_validator,
+        content_repository=build_content_repository(settings),
     )

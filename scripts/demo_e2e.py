@@ -53,6 +53,57 @@ SAMPLE_NOTE_TEXT = (
 )
 
 
+def seed_patient_identity(connection: sqlite3.Connection, patient_id: str) -> None:
+    connection.execute(
+        """
+        INSERT INTO patient_identity_vault (
+            patient_id,
+            medical_record_number,
+            first_name,
+            last_name,
+            date_of_birth
+        )
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            patient_id,
+            f"MRN-{uuid4()}",
+            "Demo",
+            "Patient",
+            "1990-01-01",
+        ),
+    )
+    connection.commit()
+
+
+def seed_icd_taxonomy(connection: sqlite3.Connection) -> None:
+    connection.execute(
+        """
+        INSERT INTO icd11_taxonomy (
+            code,
+            title,
+            class_kind,
+            context_path,
+            chapter_no,
+            is_leaf,
+            is_residual
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            KNOWN_ICD_CODE,
+            "Demo ICD-11 diagnosis",
+            "category",
+            None,
+            None,
+            1,
+            0,
+        ),
+    )
+
+    connection.commit()
+
+
 class _DemoSettings:
     GRAPH_CHECKPOINT_DB_PATH: str
     RETRIEVAL_TOP_K = 3
@@ -85,6 +136,8 @@ def main() -> None:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys=ON;")
 
+        seed_icd_taxonomy(connection)
+
         container = build_container(
             connection,
             cache_repository=FakeClinicalDecisionCacheRepository(),
@@ -108,8 +161,12 @@ def main() -> None:
 
         with TestClient(main_module.app) as client:
             _print_stage("STAGE 1 -- Submit clinical note (cache miss expected)")
+            patient_id = str(uuid4())
+
+            seed_patient_identity(connection, patient_id)
+
             submit_payload = {
-                "patient_id": str(uuid4()),
+                "patient_id": patient_id,
                 "content_reference": content_reference,
             }
             submit_response = client.post("/api/v1/clinical-notes", json=submit_payload)

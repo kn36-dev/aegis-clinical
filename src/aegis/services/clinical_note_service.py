@@ -77,8 +77,20 @@ class ClinicalNoteService(ABC):
     """
 
     @abstractmethod
-    def create_clinical_note(self, submission: ClinicalNoteSubmission) -> ClinicalNote:
-        """Construct, persist, and return a new immutable ``ClinicalNote``."""
+    def create_clinical_note(
+        self, submission: ClinicalNoteSubmission, case_id: UUID | None = None
+    ) -> ClinicalNote:
+        """
+        Construct, persist, and return a new immutable ``ClinicalNote``.
+
+        ``case_id`` is an optional caller-supplied identity override. It
+        exists solely so a workflow-runtime caller that must fix a
+        checkpoint identity *before* this service ever runs (LangGraph's
+        ``thread_id`` is set on graph invocation, ahead of this node) can
+        make that identity and ``ClinicalNote.case_id`` the same value.
+        When omitted, the service generates identity itself via its
+        injected ``IdentifierGenerator``, exactly as before.
+        """
         raise NotImplementedError
 
 
@@ -102,9 +114,11 @@ class DefaultClinicalNoteService(ClinicalNoteService):
         self._identifier_generator = identifier_generator or UUID4IdentifierGenerator()
         self._clock = clock or SystemClock()
 
-    def create_clinical_note(self, submission: ClinicalNoteSubmission) -> ClinicalNote:
+    def create_clinical_note(
+        self, submission: ClinicalNoteSubmission, case_id: UUID | None = None
+    ) -> ClinicalNote:
         clinical_note = ClinicalNote(
-            case_id=self._identifier_generator.generate(),
+            case_id=case_id or self._identifier_generator.generate(),
             patient_id=submission.patient_id,
             content_reference=submission.content_reference,
             created_at=self._clock.now(),
