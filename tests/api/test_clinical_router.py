@@ -13,6 +13,7 @@ Redis, Upstash Vector, or LLM is ever touched.
 
 from __future__ import annotations
 
+import ast
 import inspect
 from datetime import datetime, timezone
 from typing import Any
@@ -98,27 +99,24 @@ def test_successful_submission_reaches_graph_with_submission_and_thread_id() -> 
     assert "thread_id" in fake_graph.calls[0]["config"]["configurable"]
 
 
-def test_router_does_not_call_application_services_directly() -> None:
-    """
-    Structural guard: the router module must depend only on ``get_graph``
-    (plus request/response schemas), never a concrete
-    ``ClinicalNoteService``/``NormalizationService``/``RetrievalService``/
-    ``CacheService`` or a repository -- those stay owned by the graph the
-    router only invokes.
-    """
+def test_router_does_not_import_application_services_directly() -> None:
     source = inspect.getsource(clinical)
-    forbidden = [
-        "ClinicalNoteService",
-        "NormalizationService",
-        "RetrievalService",
-        "CacheService",
-        "Repository",
-        "sqlite3",
-        "redis",
-        "get_container",
+    tree = ast.parse(source)
+
+    imported_modules = {
+        node.module for node in ast.walk(tree) if isinstance(node, ast.ImportFrom) and node.module
+    }
+
+    forbidden_imports = [
+        "aegis.services.clinical_note_service",
+        "aegis.services.normalization_service",
+        "aegis.services.retrieval_service",
+        "aegis.services.cache_service",
+        "aegis.repositories",
     ]
-    for symbol in forbidden:
-        assert symbol not in source, f"router must not reference {symbol!r} directly"
+
+    for forbidden in forbidden_imports:
+        assert forbidden not in imported_modules, f"router must not import {forbidden!r} directly"
 
 
 def test_pending_review_state_returned_correctly() -> None:

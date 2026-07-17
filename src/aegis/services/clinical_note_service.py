@@ -19,25 +19,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 from uuid import UUID, uuid4
 
-from aegis.models.base import DomainModel
 from aegis.models.clinical_note import ClinicalNote
 
-
-class ClinicalNoteSubmission(DomainModel):
-    """
-    Untrusted external submission data, as provided by an ingress layer
-    (FastAPI, a message consumer, batch ingestion, ...).
-
-    This is deliberately not a ``ClinicalNote`` — it has no identity or
-    creation timestamp yet. ``ClinicalNoteService`` is the only
-    component that may turn a submission into a ``ClinicalNote``.
-    """
-
-    patient_id: UUID
-    content_reference: str
+if TYPE_CHECKING:
+    from aegis.models.workflow_commands import ClinicalNoteSubmission
 
 
 class IdentifierGenerator(Protocol):

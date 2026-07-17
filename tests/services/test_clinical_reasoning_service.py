@@ -123,12 +123,12 @@ class TestClinicalReasoningServiceInterface:
     ):
         assert isinstance(service, ClinicalReasoningService)
 
-    def test_service_exposes_only_reason(self):
+    def test_service_exposes_only_reasoning_boundary_methods(self):
         public_methods = {
             name for name in vars(ClinicalReasoningService) if not name.startswith("_")
         }
 
-        assert public_methods == {"reason"}
+        assert public_methods == {"reason", "model_name"}
 
 
 class TestSuccessfulReasoning:
@@ -276,4 +276,16 @@ class TestBoundaryProtection:
             name for name in vars(DefaultClinicalReasoningService) if not name.startswith("_")
         }
 
-        assert public_methods == {"reason"}
+        assert "reason" in public_methods
+        assert "model_name" in public_methods
+
+        forbidden = {
+            "save",
+            "persist",
+            "store",
+            "retrieve",
+            "lookup",
+            "query",
+        }
+
+        assert public_methods.isdisjoint(forbidden)

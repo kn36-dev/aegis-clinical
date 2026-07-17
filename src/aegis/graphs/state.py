@@ -40,8 +40,10 @@ from aegis.models.coding_recommendation import CodingRecommendation  # noqa: TCH
 from aegis.models.normalized_clinical_note import NormalizedClinicalNote  # noqa: TCH001
 from aegis.models.reasoning_context import ReasoningContext  # noqa: TCH001
 from aegis.models.retrieval import RetrievalResult  # noqa: TCH001
-from aegis.services.clinical_decision_service import PhysicianDecisionSubmission  # noqa: TCH001
-from aegis.services.clinical_note_service import ClinicalNoteSubmission  # noqa: TCH001
+from aegis.models.workflow_commands import (  # noqa: TCH001
+    ClinicalNoteSubmission,
+    PhysicianDecisionSubmission,
+)
 
 
 class AegisWorkflowState(TypedDict):

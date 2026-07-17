@@ -21,7 +21,15 @@ CLINICAL_TABLE_SCHEMAS: Dict[str, str] = {
         CREATE TABLE IF NOT EXISTS Patient_cases (
             case_id TEXT PRIMARY KEY,
             patient_id TEXT NOT NULL,
-            status TEXT NOT NULL CHECK (status IN ('pending_ai', 'pending_hitl', 'archived', 'failed')),
+            status TEXT NOT NULL 
+                CHECK (
+                    status IN (
+                        'pending_ai', 
+                        'pending_hitl', 
+                        'archived', 
+                        'failed'
+                    )
+                ),
             ingress_timestamp TEXT NOT NULL,
             raw_clinical_note TEXT NOT NULL,
             anonymized_clinical_note TEXT,
@@ -74,7 +82,14 @@ CLINICAL_TABLE_SCHEMAS: Dict[str, str] = {
             trigger_case_id TEXT NOT NULL,
             trial_id TEXT NOT NULL,
             structural_match_score REAL NOT NULL,
-            match_status TEXT NOT NULL CHECK (match_status IN ('PENDING_REVIEW', 'PHYSICIAN_APPROVED', 'PHYSICIAN_REJECTED')),
+            match_status TEXT NOT NULL 
+                CHECK (
+                    match_status IN (
+                        'PENDING_REVIEW', 
+                        'PHYSICIAN_APPROVED', 
+                        'PHYSICIAN_REJECTED'
+                    )
+                ),
             justification_summary TEXT NOT NULL,
             created_at TEXT NOT NULL,
             FOREIGN KEY (patient_id) REFERENCES Patient_identity_vault(patient_id),
@@ -87,7 +102,14 @@ CLINICAL_TABLE_SCHEMAS: Dict[str, str] = {
             review_id TEXT PRIMARY KEY,
             case_id TEXT NOT NULL,
             reviewer_badge_id TEXT NOT NULL,
-            action_taken TEXT NOT NULL CHECK (action_taken IN ('APPROVED_ALL', 'OVERRIDDEN_AND_APPROVED', 'REJECTED_CASE')),
+            action_taken TEXT NOT NULL 
+                CHECK (
+                    action_taken IN (
+                        'APPROVED_ALL', 
+                        'OVERRIDDEN_AND_APPROVED', 
+                        'REJECTED_CASE'
+                    )
+                ),
             physician_notes TEXT,
             cryptographic_signature TEXT NOT NULL,
             timestamp TEXT NOT NULL,
@@ -131,7 +153,13 @@ def test_patient_identity_vault_schema(memory_db):
 
     # Insert structured test seed row
     cursor.execute("""
-        INSERT INTO Patient_identity_vault (patient_id, medical_record_number, first_name, last_name, date_of_birth)
+        INSERT INTO Patient_identity_vault (
+            patient_id, 
+            medical_record_number, 
+            first_name, 
+            last_name, 
+            date_of_birth
+        )
         VALUES ('pt-100', 'MRN-999-888', 'John', 'Doe', '1990-01-01');
     """)
     memory_db.commit()
@@ -139,7 +167,13 @@ def test_patient_identity_vault_schema(memory_db):
     # Test unique constraint failure assertion
     with pytest.raises(sqlite3.IntegrityError):
         cursor.execute("""
-            INSERT INTO Patient_identity_vault (patient_id, medical_record_number, first_name, last_name, date_of_birth)
+            INSERT INTO Patient_identity_vault (
+                patient_id, 
+                medical_record_number, 
+                first_name, 
+                last_name, 
+                date_of_birth
+            )
             VALUES ('pt-200', 'MRN-999-888', 'Jane', 'Smith', '1992-05-12'); 
             -- Duplicated MRN must throw an IntegrityError exception
         """)

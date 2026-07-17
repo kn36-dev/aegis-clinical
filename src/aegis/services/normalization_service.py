@@ -98,6 +98,12 @@ class NormalizationService(ABC):
         """Produce the immutable ``NormalizedClinicalNote`` for ``clinical_note``."""
         raise NotImplementedError
 
+    @property
+    @abstractmethod
+    def phi_anonymizer(self) -> PHIAnonymizer:
+        """Configured PHI anonymizer."""
+        raise NotImplementedError
+
 
 class DefaultNormalizationService(NormalizationService):
     """
@@ -132,3 +138,8 @@ class DefaultNormalizationService(NormalizationService):
             normalization_version=self._rule_set.version,
             created_at=self._clock.now(),
         )
+
+    @property
+    def phi_anonymizer(self) -> PHIAnonymizer:
+        """Configured PHI anonymizer."""
+        return self._phi_anonymizer

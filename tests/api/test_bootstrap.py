@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -19,8 +19,10 @@ from aegis.api.bootstrap import (
 )
 from aegis.embeddings.openai import OpenAIEmbeddingProvider
 from aegis.embeddings.sentence_transformers import SentenceTransformersEmbeddingProvider
-
 from tests.application.fakes import FakeEmbeddingProvider
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class _SettingsStub:

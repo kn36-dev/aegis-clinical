@@ -28,8 +28,8 @@ import unicodedata
 from abc import ABC, abstractmethod
 from typing import Protocol
 
-from aegis.models.clinical_decision import ClinicalDecision
-from aegis.models.normalized_clinical_note import NormalizedClinicalNote
+from aegis.models.clinical_decision import ClinicalDecision  # noqa: TC001
+from aegis.models.normalized_clinical_note import NormalizedClinicalNote  # noqa: TC001
 
 CACHE_KEY_VERSION = "1.0"
 

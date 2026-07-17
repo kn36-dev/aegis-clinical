@@ -10,18 +10,21 @@ declare, never on a specific infrastructure implementation.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 from aegis.embeddings.base import EmbeddingProvider
 from aegis.indexing.documents import RepresentationDocument, VectorDocument
-from aegis.models.clinical_decision import ClinicalDecision
-from aegis.models.clinical_note import ClinicalNote
 from aegis.models.normalized_clinical_note import NormalizedClinicalNote
-from aegis.models.reasoning_context import ReasoningContext
 from aegis.phi.base import PHIAnonymizer
 from aegis.retrieval.providers.base import VectorMatch, VectorQueryProvider
 from aegis.services.clinical_reasoning_service import ReasoningProvider
+
+if TYPE_CHECKING:
+    from aegis.models.clinical_decision import ClinicalDecision
+    from aegis.models.clinical_note import ClinicalNote
+    from aegis.models.reasoning_context import ReasoningContext
+
 
 FIXED_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
 KNOWN_ICD_CODE = "1A00"

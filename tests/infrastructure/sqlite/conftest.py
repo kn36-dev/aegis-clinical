@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import sqlite3
-from pathlib import Path
-from typing import Iterator
+from typing import TYPE_CHECKING, Iterator
 
 import pytest
 
 from aegis.database.database import init_clinical_database
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 @pytest.fixture

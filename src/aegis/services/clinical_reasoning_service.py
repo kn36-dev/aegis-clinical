@@ -116,6 +116,12 @@ class ClinicalReasoningService(ABC):
         """Produce the ``CodingRecommendation`` for this ``ReasoningContext``."""
         raise NotImplementedError
 
+    @property
+    @abstractmethod
+    def model_name(self) -> str:
+        """Configured reasoning model identifier."""
+        raise NotImplementedError
+
 
 class DefaultClinicalReasoningService(ClinicalReasoningService):
     """
@@ -201,3 +207,8 @@ class DefaultClinicalReasoningService(ClinicalReasoningService):
                 generated_at=self._clock.now(),
             ),
         )
+
+    @property
+    def model_name(self) -> str:
+        """Configured reasoning model identifier."""
+        return self._model_name

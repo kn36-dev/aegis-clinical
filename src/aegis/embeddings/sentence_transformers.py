@@ -73,4 +73,4 @@ class SentenceTransformersEmbeddingProvider(EmbeddingProvider):
 
     def embed_query(self, text: str) -> list[float]:
         embedding = self._model.encode(text).tolist()
-        return cast(list[float], embedding)
+        return cast("list[float]", embedding)

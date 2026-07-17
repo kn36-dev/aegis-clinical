@@ -23,8 +23,7 @@ context manager.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import pytest
@@ -33,6 +32,9 @@ from langgraph.types import Interrupt
 
 from aegis.api.dependencies import get_graph
 from aegis.api.main import app
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 @pytest.fixture

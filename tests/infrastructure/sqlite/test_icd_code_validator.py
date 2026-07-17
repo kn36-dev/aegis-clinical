@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-import sqlite3
+from typing import TYPE_CHECKING
 
 from aegis.database.repositories.icd_repository import ICDRepository
 from aegis.infrastructure.sqlite.icd_code_validator import SQLiteICDCodeValidator
+
+if TYPE_CHECKING:
+    import sqlite3
 
 
 def _seed_icd_code(conn: sqlite3.Connection, code: str) -> None:

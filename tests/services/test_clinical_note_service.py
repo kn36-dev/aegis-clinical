@@ -5,9 +5,9 @@ import pytest
 from pydantic import ValidationError
 
 from aegis.models.clinical_note import ClinicalNote
+from aegis.models.workflow_commands import ClinicalNoteSubmission
 from aegis.services.clinical_note_service import (
     ClinicalNoteService,
-    ClinicalNoteSubmission,
     DefaultClinicalNoteService,
 )
 

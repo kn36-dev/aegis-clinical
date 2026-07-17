@@ -49,7 +49,10 @@ def test_round_trip_persistence(clinical_db_connection: sqlite3.Connection) -> N
 def test_get_content_raises_typed_error_when_absent(
     clinical_db_connection: sqlite3.Connection,
 ) -> None:
-    """Boundary protection: a missing reference must raise a repository-level error, not a raw sqlite error or None."""
+    """
+    Boundary protection: a missing reference must raise a repository-level error,
+    not a raw sqlite error or None.
+    """
     store = SQLiteContentStore(clinical_db_connection)
 
     with pytest.raises(ContentNotFoundError):

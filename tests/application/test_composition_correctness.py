@@ -6,7 +6,7 @@ caller-supplied collaborators that have no production adapter yet.
 
 from __future__ import annotations
 
-import sqlite3
+from typing import TYPE_CHECKING
 
 from aegis.application.container import AegisContainer, build_container
 from aegis.infrastructure.sqlite.clinical_decision_repository import (
@@ -23,7 +23,6 @@ from aegis.services.context_assembler import ContextAssembler
 from aegis.services.normalization_service import NormalizationService
 from aegis.services.persistence_service import PersistenceService
 from aegis.services.retrieval_service import RetrievalService
-
 from tests.application.fakes import (
     FakeClinicalDecisionCacheRepository,
     FakeEmbeddingProvider,
@@ -32,6 +31,9 @@ from tests.application.fakes import (
     FakeReasoningProvider,
     FakeVectorQueryProvider,
 )
+
+if TYPE_CHECKING:
+    import sqlite3
 
 
 def _build(connection: sqlite3.Connection, **overrides) -> AegisContainer:
@@ -79,7 +81,7 @@ class TestServiceConstruction:
     ) -> None:
         container = _build(clinical_db_connection, reasoning_model_name="qwen/qwen3-32b")
 
-        assert container.clinical_reasoning_service._model_name == "qwen/qwen3-32b"  # noqa: SLF001
+        assert container.clinical_reasoning_service.model_name == "qwen/qwen3-32b"  # noqa: SLF001
 
     def test_defaults_to_the_real_presidio_anonymizer_when_none_is_supplied(
         self, clinical_db_connection: sqlite3.Connection
@@ -87,7 +89,7 @@ class TestServiceConstruction:
         container = _build(clinical_db_connection, phi_anonymizer=None)
 
         assert isinstance(
-            container.normalization_service._phi_anonymizer,  # noqa: SLF001
+            container.normalization_service.phi_anonymizer,  # noqa: SLF001
             PresidioPHIAnonymizer,
         )
 

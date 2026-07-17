@@ -1,3 +1,6 @@
+import pytest
+from pydantic import ValidationError
+
 from aegis.indexing.documents import (
     RepresentationDocument,
     RepresentationMetadata,
@@ -38,11 +41,8 @@ def test_representation_document_immutable():
         ),
     )
 
-    try:
+    with pytest.raises(ValidationError):
         doc.text = "modified"
-        assert False
-    except Exception:
-        assert True
 
 
 def test_vector_document_wraps_representation():

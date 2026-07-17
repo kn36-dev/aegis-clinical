@@ -14,11 +14,10 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from typing import cast
+from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
 import pytest
-from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
@@ -38,19 +37,21 @@ from aegis.models.coding_recommendation import (
     ReasoningMetadata,
 )
 from aegis.models.normalized_clinical_note import NormalizedClinicalNote
-from aegis.models.reasoning_context import ReasoningContext
 from aegis.models.retrieval import RetrievalCandidate, RetrievalRequest, RetrievalResult
+from aegis.models.workflow_commands import ClinicalNoteSubmission, PhysicianDecisionSubmission
 from aegis.services.cache_service import CacheService
-from aegis.services.clinical_decision_service import (
-    ClinicalDecisionService,
-    PhysicianDecisionSubmission,
-)
-from aegis.services.clinical_note_service import ClinicalNoteService, ClinicalNoteSubmission
+from aegis.services.clinical_decision_service import ClinicalDecisionService
+from aegis.services.clinical_note_service import ClinicalNoteService
 from aegis.services.clinical_reasoning_service import ClinicalReasoningService
 from aegis.services.context_assembler import ContextAssembler, DefaultContextAssembler
 from aegis.services.normalization_service import NormalizationService
 from aegis.services.persistence_service import PersistenceResult, PersistenceService
 from aegis.services.retrieval_service import RetrievalService
+
+if TYPE_CHECKING:
+    from langchain_core.runnables import RunnableConfig
+
+    from aegis.models.reasoning_context import ReasoningContext
 
 FIXED_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
 FIXED_CASE_ID = UUID("00000000-0000-0000-0000-000000000001")
@@ -100,6 +101,10 @@ class FakeNormalizationService(NormalizationService):
             normalization_version="1.0",
             created_at=FIXED_TIME,
         )
+
+    @property
+    def phi_anonymizer(self):
+        return self.phi_anonymizer
 
 
 class FakeCacheService(CacheService):
@@ -173,6 +178,11 @@ class RecordingContextAssembler(ContextAssembler):
 class FakeClinicalReasoningService(ClinicalReasoningService):
     def __init__(self) -> None:
         self.calls: list[ReasoningContext] = []
+        self._model_name = "fake-model"
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
 
     def reason(self, context: ReasoningContext) -> CodingRecommendation:
         self.calls.append(context)
@@ -425,7 +435,7 @@ class TestCacheHit:
         submission = make_submission()
 
         final_state = cast(
-            AegisWorkflowState,
+            "AegisWorkflowState",
             asyncio.run(graph.ainvoke({"submission": submission}, config=make_config())),
         )
         assert "clinical_decision" in final_state

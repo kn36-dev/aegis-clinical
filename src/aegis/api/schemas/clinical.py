@@ -4,7 +4,7 @@ API schemas for clinical note ingestion (POST /api/v1/clinical-notes).
 
 These are HTTP boundary DTOs, not domain models: ``ClinicalNoteIngestionRequest``
 translates an external caller's submission into
-``aegis.services.clinical_note_service.ClinicalNoteSubmission``, and
+``aegis.models.workflow_commands.ClinicalNoteSubmission``, and
 ``ClinicalNoteIngestionResponse`` translates the terminal/interrupted
 ``AegisWorkflowState`` produced by the LangGraph workflow back into
 something an HTTP caller can act on. Domain models (``ClinicalNote``,

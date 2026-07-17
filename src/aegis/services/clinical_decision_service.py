@@ -63,9 +63,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Protocol
-from uuid import UUID
 
-from aegis.models.base import DomainModel, ICDCode
 from aegis.models.clinical_decision import (
     ApprovedICDClassification,
     ClinicalDecision,
@@ -75,28 +73,8 @@ from aegis.services.clinical_note_service import SystemClock, UUID4IdentifierGen
 
 if TYPE_CHECKING:
     from aegis.models.coding_recommendation import CodingRecommendation
+    from aegis.models.workflow_commands import PhysicianDecisionSubmission
     from aegis.services.clinical_note_service import Clock, IdentifierGenerator
-
-
-class PhysicianDecisionSubmission(DomainModel):
-    """
-    Untrusted physician review of a ``CodingRecommendation``.
-
-    The physician submits only the final approved ICD-11 codes for the
-    encounter — never explanations or business classifications (see the
-    contract's Physician Input Boundary). ``recommendation_id`` identifies
-    which reasoning pass is being reviewed; ``case_id`` and
-    ``patient_id_reference`` identify the encounter and patient boundary.
-    ``normalization_version`` traces the decision back to the deterministic
-    ``NormalizedClinicalNote`` that produced the evidence reasoned over
-    (see ``ClinicalDecision``'s Normalization Traceability).
-    """
-
-    case_id: UUID
-    recommendation_id: UUID
-    patient_id_reference: UUID
-    normalization_version: str
-    selected_icd_codes: list[ICDCode]
 
 
 class ICDCodeValidator(Protocol):

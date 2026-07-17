@@ -38,8 +38,7 @@ from aegis.models.coding_recommendation import (
     ReasoningMetadata,
 )
 from aegis.models.normalized_clinical_note import NormalizedClinicalNote
-from aegis.services.clinical_decision_service import PhysicianDecisionSubmission
-from aegis.services.clinical_note_service import ClinicalNoteSubmission
+from aegis.models.workflow_commands import ClinicalNoteSubmission, PhysicianDecisionSubmission
 
 FIXED_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -320,24 +319,17 @@ def test_post_decision_resume_failure_translated_without_leaking_internals() -> 
     assert "ConnectionError" not in response.json()["detail"]
 
 
-def test_router_does_not_call_application_services_directly() -> None:
-    """
-    Structural guard: the router module must depend only on ``get_graph``
-    (plus request/response schemas and the transient
-    ``PhysicianDecisionSubmission`` resume-payload constructor) -- never a
-    concrete ``ClinicalDecisionService``/``PersistenceService``/
-    ``ClinicalReasoningService`` or a repository, all of which stay owned
-    by the graph the router only invokes/resumes.
-    """
+def test_router_does_not_import_application_services_directly() -> None:
     source = inspect.getsource(review)
-    forbidden = [
-        "ClinicalDecisionService",
-        "PersistenceService",
-        "ClinicalReasoningService",
-        "Repository",
+
+    forbidden_imports = [
+        "aegis.services.clinical_decision_service",
+        "aegis.services.persistence_service",
+        "aegis.services.clinical_reasoning_service",
+        "aegis.repositories",
         "sqlite3",
         "redis",
-        "get_container",
     ]
-    for symbol in forbidden:
-        assert symbol not in source, f"router must not reference {symbol!r} directly"
+
+    for forbidden in forbidden_imports:
+        assert forbidden not in source, f"router must not import {forbidden!r} directly"

@@ -17,10 +17,9 @@ Two independent checks:
 from __future__ import annotations
 
 import dataclasses
-import sqlite3
+from typing import TYPE_CHECKING
 
 from aegis.application.container import AegisContainer, build_container
-
 from tests.application.fakes import (
     FakeClinicalDecisionCacheRepository,
     FakeEmbeddingProvider,
@@ -29,6 +28,10 @@ from tests.application.fakes import (
     FakeReasoningProvider,
     FakeVectorQueryProvider,
 )
+
+if TYPE_CHECKING:
+    import sqlite3
+
 
 EXPECTED_SERVICE_FIELD_TYPES = {
     "clinical_note_service": "ClinicalNoteService",

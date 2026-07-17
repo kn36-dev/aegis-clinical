@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from fastapi import Request
+from fastapi import Request  # noqa: TC002
 
 from aegis.api.schemas.identity import RequestIdentityContext
 

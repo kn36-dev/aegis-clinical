@@ -14,7 +14,7 @@ resulting state back into an HTTP response.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -27,8 +27,10 @@ from aegis.api.schemas.clinical import (
     WorkflowStatus,
 )
 from aegis.api.schemas.errors import ErrorResponse
-from aegis.api.schemas.identity import RequestIdentityContext
-from aegis.services.clinical_note_service import ClinicalNoteSubmission
+from aegis.models.workflow_commands import ClinicalNoteSubmission
+
+if TYPE_CHECKING:
+    from aegis.api.schemas.identity import RequestIdentityContext
 
 router = APIRouter()
 

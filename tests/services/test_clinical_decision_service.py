@@ -11,10 +11,10 @@ from aegis.models.coding_recommendation import (
     ICDCodeRecommendation,
     ReasoningMetadata,
 )
+from aegis.models.workflow_commands import PhysicianDecisionSubmission
 from aegis.services.clinical_decision_service import (
     ClinicalDecisionService,
     DefaultClinicalDecisionService,
-    PhysicianDecisionSubmission,
 )
 
 

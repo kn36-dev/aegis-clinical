@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from typing import Iterator
+from typing import TYPE_CHECKING, Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,6 +25,9 @@ from tests.application.fakes import (
     FakeReasoningProvider,
     FakeVectorQueryProvider,
 )
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class _FakeSettings:
