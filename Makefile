@@ -41,8 +41,5 @@ db-seed-icd:
 demo:
 	uv run python scripts/demo_e2e.py
 
-# Makefile should contain these as well:
-# make init-db
-# make seed-db
-# make build-index
-# make run
+integration:
+	uv run python scripts/integration_e2e.py
