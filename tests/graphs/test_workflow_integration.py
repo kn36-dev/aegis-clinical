@@ -186,7 +186,7 @@ class FakeClinicalReasoningService(ClinicalReasoningService):
     def model_name(self) -> str:
         return self._model_name
 
-    def reason(self, context: ReasoningContext) -> CodingRecommendation:
+    async def reason(self, context: ReasoningContext) -> CodingRecommendation:
         self.calls.append(context)
         return CodingRecommendation(
             recommendation_id=FIXED_RECOMMENDATION_ID,

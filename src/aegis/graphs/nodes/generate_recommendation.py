@@ -23,7 +23,7 @@ def make_generate_recommendation_node(
     """Bind ``clinical_reasoning_service`` into a LangGraph node callable."""
 
     async def generate_recommendation(state: AegisWorkflowState) -> dict[str, Any]:
-        coding_recommendation = clinical_reasoning_service.reason(state["reasoning_context"])
+        coding_recommendation = await clinical_reasoning_service.reason(state["reasoning_context"])
         return {"coding_recommendation": coding_recommendation}
 
     return generate_recommendation

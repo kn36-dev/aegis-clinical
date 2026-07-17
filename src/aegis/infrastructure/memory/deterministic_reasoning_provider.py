@@ -46,7 +46,7 @@ class DeterministicTopCandidateReasoningProvider(ReasoningProvider):
     ``ClinicalReasoningService``, if it somehow receives none.
     """
 
-    def reason(self, context: ReasoningContext, prompt: str) -> dict[str, Any]:
+    async def reason(self, context: ReasoningContext, prompt: str) -> dict[str, Any]:
         top_candidate = context.candidates[0]
         return {
             "recommendations": [

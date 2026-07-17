@@ -58,9 +58,9 @@ class CrewAIReasoningProvider(ReasoningProvider):
     ) -> None:
         self._llm = LLM(model=f"{provider}/{model}", api_key=api_key, temperature=temperature)
 
-    def reason(self, context: ReasoningContext, prompt: str) -> dict[str, Any]:
+    async def reason(self, context: ReasoningContext, prompt: str) -> dict[str, Any]:
         crew = build_clinical_reasoning_crew(self._llm, prompt)
-        result = crew.kickoff()
+        result = await crew.kickoff_async()
         return self._translate(result)
 
     @staticmethod

@@ -126,7 +126,7 @@ class FakeReasoningProvider(ReasoningProvider):
     def __init__(self, icd_code: str = KNOWN_ICD_CODE) -> None:
         self._icd_code = icd_code
 
-    def reason(self, context: ReasoningContext, prompt: str) -> dict[str, Any]:
+    async def reason(self, context: ReasoningContext, prompt: str) -> dict[str, Any]:
         return {
             "recommendations": [
                 {

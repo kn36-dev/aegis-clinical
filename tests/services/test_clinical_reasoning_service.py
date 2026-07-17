@@ -21,7 +21,7 @@ class FakeReasoningProvider(ReasoningProvider):
         self._responses = list(responses) if responses is not None else [_valid_response()]
         self.reason_calls: list[tuple[ReasoningContext, str]] = []
 
-    def reason(self, context: ReasoningContext, prompt: str) -> dict[str, Any]:
+    async def reason(self, context: ReasoningContext, prompt: str) -> dict[str, Any]:
         self.reason_calls.append((context, prompt))
         index = min(len(self.reason_calls) - 1, len(self._responses) - 1)
         return self._responses[index]
@@ -132,24 +132,26 @@ class TestClinicalReasoningServiceInterface:
 
 
 class TestSuccessfulReasoning:
-    def test_reason_produces_a_coding_recommendation(
+    async def test_reason_produces_a_coding_recommendation(
         self, service: DefaultClinicalReasoningService
     ):
-        recommendation = service.reason(make_context())
+        recommendation = await service.reason(make_context())
 
         assert isinstance(recommendation, CodingRecommendation)
 
-    def test_recommendation_references_the_case_id(self, service: DefaultClinicalReasoningService):
+    async def test_recommendation_references_the_case_id(
+        self, service: DefaultClinicalReasoningService
+    ):
         context = make_context()
 
-        recommendation = service.reason(context)
+        recommendation = await service.reason(context)
 
         assert recommendation.case_id == context.case_id
 
-    def test_recommendation_carries_the_providers_structured_output(
+    async def test_recommendation_carries_the_providers_structured_output(
         self, service: DefaultClinicalReasoningService
     ):
-        recommendation = service.reason(make_context())
+        recommendation = await service.reason(make_context())
 
         assert len(recommendation.recommendations) == 1
         entry = recommendation.recommendations[0]
@@ -160,38 +162,38 @@ class TestSuccessfulReasoning:
         assert entry.model_confidence == 0.82
         assert recommendation.reasoning_summary == "Cholera is the best-supported candidate."
 
-    def test_recommendation_carries_reproducibility_metadata(
+    async def test_recommendation_carries_reproducibility_metadata(
         self, service: DefaultClinicalReasoningService, clock: FakeClock
     ):
-        recommendation = service.reason(make_context())
+        recommendation = await service.reason(make_context())
 
         assert recommendation.metadata.model_name == "qwen/qwen3-32b"
         assert recommendation.metadata.prompt_version
         assert recommendation.metadata.generated_at == clock.now()
 
-    def test_reason_invokes_provider_with_context_and_a_rendered_prompt(
+    async def test_reason_invokes_provider_with_context_and_a_rendered_prompt(
         self, service: DefaultClinicalReasoningService, provider: FakeReasoningProvider
     ):
         context = make_context()
 
-        service.reason(context)
+        await service.reason(context)
 
         [(called_context, prompt)] = provider.reason_calls
         assert called_context == context
         assert context.anonymized_clinical_text in prompt
         assert context.candidates[0].icd_code in prompt
 
-    def test_result_is_immutable(self, service: DefaultClinicalReasoningService):
+    async def test_result_is_immutable(self, service: DefaultClinicalReasoningService):
         from pydantic import ValidationError
 
-        recommendation = service.reason(make_context())
+        recommendation = await service.reason(make_context())
 
         with pytest.raises(ValidationError):
             recommendation.reasoning_summary = "mutated"
 
 
 class TestInvalidProviderOutput:
-    def test_malformed_output_is_rejected_after_retries(
+    async def test_malformed_output_is_rejected_after_retries(
         self, identifier_generator: FakeIdentifierGenerator, clock: FakeClock
     ):
         provider = FakeReasoningProvider(responses=[{"not_a_recognized_shape": True}])
@@ -204,11 +206,11 @@ class TestInvalidProviderOutput:
         )
 
         with pytest.raises(ValueError):
-            service.reason(make_context())
+            await service.reason(make_context())
 
         assert len(provider.reason_calls) == 2
 
-    def test_invented_icd_code_is_rejected(
+    async def test_invented_icd_code_is_rejected(
         self, identifier_generator: FakeIdentifierGenerator, clock: FakeClock
     ):
         provider = FakeReasoningProvider(responses=[_valid_response(icd_code="9Z99")])
@@ -221,9 +223,9 @@ class TestInvalidProviderOutput:
         )
 
         with pytest.raises(ValueError):
-            service.reason(make_context(candidates=[make_candidate(icd_code="1A00")]))
+            await service.reason(make_context(candidates=[make_candidate(icd_code="1A00")]))
 
-    def test_recovers_if_a_later_attempt_succeeds(
+    async def test_recovers_if_a_later_attempt_succeeds(
         self, identifier_generator: FakeIdentifierGenerator, clock: FakeClock
     ):
         provider = FakeReasoningProvider(
@@ -237,16 +239,16 @@ class TestInvalidProviderOutput:
             clock=clock,
         )
 
-        recommendation = service.reason(make_context())
+        recommendation = await service.reason(make_context())
 
         assert isinstance(recommendation, CodingRecommendation)
         assert len(provider.reason_calls) == 2
 
 
 class TestProviderReplacement:
-    def test_a_second_reasoning_provider_implementation_satisfies_the_interface(self):
+    async def test_a_second_reasoning_provider_implementation_satisfies_the_interface(self):
         class AlwaysEmptyReasoningProvider(ReasoningProvider):
-            def reason(self, context: ReasoningContext, prompt: str) -> dict[str, Any]:
+            async def reason(self, context: ReasoningContext, prompt: str) -> dict[str, Any]:
                 return {"recommendations": [], "reasoning_summary": "No candidates matched."}
 
         service = DefaultClinicalReasoningService(
@@ -254,20 +256,20 @@ class TestProviderReplacement:
             model_name="qwen/qwen3-32b",
         )
 
-        recommendation = service.reason(make_context())
+        recommendation = await service.reason(make_context())
 
         assert recommendation.recommendations == []
         assert recommendation.reasoning_summary == "No candidates matched."
 
 
 class TestBoundaryProtection:
-    def test_service_does_not_mutate_reasoning_context(
+    async def test_service_does_not_mutate_reasoning_context(
         self, service: DefaultClinicalReasoningService
     ):
         context = make_context()
         original = context.model_copy(deep=True)
 
-        service.reason(context)
+        await service.reason(context)
 
         assert context == original
 

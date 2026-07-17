@@ -60,7 +60,7 @@ class ReasoningProvider(ABC):
     """
 
     @abstractmethod
-    def reason(self, context: ReasoningContext, prompt: str) -> dict[str, Any]:
+    async def reason(self, context: ReasoningContext, prompt: str) -> dict[str, Any]:
         """Execute one reasoning pass and return raw structured candidate output."""
         raise NotImplementedError
 
@@ -112,7 +112,7 @@ class ClinicalReasoningService(ABC):
     """
 
     @abstractmethod
-    def reason(self, context: ReasoningContext) -> CodingRecommendation:
+    async def reason(self, context: ReasoningContext) -> CodingRecommendation:
         """Produce the ``CodingRecommendation`` for this ``ReasoningContext``."""
         raise NotImplementedError
 
@@ -148,14 +148,14 @@ class DefaultClinicalReasoningService(ClinicalReasoningService):
         self._identifier_generator = identifier_generator or UUID4IdentifierGenerator()
         self._clock = clock or SystemClock()
 
-    def reason(self, context: ReasoningContext) -> CodingRecommendation:
+    async def reason(self, context: ReasoningContext) -> CodingRecommendation:
         prompt = build_icd_reasoning_prompt(context)
         allowed_codes = {candidate.icd_code for candidate in context.candidates}
 
         last_error: Exception | None = None
         for _ in range(self._policy.max_attempts):
             try:
-                raw_output = self._reasoning_provider.reason(context, prompt)
+                raw_output = await self._reasoning_provider.reason(context, prompt)
                 validated = _RawReasoningOutput.model_validate(raw_output)
                 self._validate_codes_are_known(validated, allowed_codes)
                 return self._to_coding_recommendation(context, validated)
