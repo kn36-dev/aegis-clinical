@@ -94,6 +94,7 @@ async def submit_clinical_note(
     try:
         result = await graph.ainvoke({"submission": submission, "case_id": case_id}, config=config)
     except Exception as exc:
+        print("WORKFLOW FAILURE:", repr(exc))
         raise HTTPException(
             status_code=502,
             detail="Clinical workflow execution failed.",

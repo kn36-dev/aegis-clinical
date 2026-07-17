@@ -44,19 +44,24 @@ db-init:
 db-seed-icd:
 	uv run aegis-db seed --icd --csv-path ./data/only_medical_symptoms.csv
 
-# Credential-free, reproducible end-to-end run of the clinical pipeline
-# (submission -> AI reasoning -> human review -> decision -> cache
-# projection) through the real FastAPI app with fake infra adapters.
-# See scripts/demo_e2e.py.
+# Reproducible end-to-end run of the clinical pipeline (submission -> AI
+# reasoning -> human review -> decision -> cache projection) through the
+# real FastAPI app under AEGIS_PROFILE=demo: real embedding + real Upstash
+# Vector retrieval, deterministic in-memory cache/reasoning/content
+# adapters. Requires `make db-init && make db-seed-icd` to have been run
+# first, and Upstash Vector + embedding credentials in .env. See
+# scripts/demo_e2e.py and scripts/e2e_common.py.
 demo:
-	uv run python scripts/demo_e2e.py
+	AEGIS_PROFILE=demo uv run python scripts/demo_e2e.py
 
-# Production-readiness verification.
+# Infrastructure verification profile.
 #
-# Runs the same end-to-end workflow as `make demo`, but progressively replaces
-# fake infrastructure adapters with their real implementations (Redis, Upstash
-# Vector, embedding provider, LLM, PHI anonymizer, etc.).
-#
-# This verifies infrastructure integration without changing application logic.
+# Runs the same end-to-end workflow as `make demo`, but under
+# AEGIS_PROFILE=integration: real Redis-backed cache and real CrewAI/Groq
+# reasoning replace demo's in-memory adapters, so this exercises the full
+# set of external infrastructure credentials (Upstash Vector, Upstash
+# Redis, Groq) without changing application logic. Requires
+# `make db-init && make db-seed-icd` first, plus the full credential set
+# in .env. See scripts/integration_e2e.py and scripts/e2e_common.py.
 integration:
-	uv run python scripts/integration_e2e.py
+	AEGIS_PROFILE=integration uv run python scripts/integration_e2e.py

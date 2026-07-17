@@ -24,12 +24,17 @@ class AppSettings(BaseSettings):
     # Selects which collaborators the composition root (api/bootstrap.py)
     # assembles for the cache, reasoning, and content-repository
     # boundaries -- see CLAUDE.md's demo-profile design. "production"
-    # requires GROQ_API_KEY and the Upstash Redis credentials below;
-    # "demo" does not, since those three collaborators are replaced
-    # with deterministic in-memory adapters. Upstash Vector and the
-    # embedding provider are unconditionally required in both profiles:
-    # the demo profile keeps real semantic retrieval.
-    AEGIS_PROFILE: Literal["production", "demo"] = Field(default="production")
+    # and "integration" both require GROQ_API_KEY and the Upstash Redis
+    # credentials below; "demo" does not, since those three
+    # collaborators are replaced with deterministic in-memory adapters.
+    # Upstash Vector and the embedding provider are unconditionally
+    # required in all three profiles: demo and integration both keep
+    # real semantic retrieval. "integration" runs the same real
+    # collaborators as "production" (see api/bootstrap.py) and exists
+    # so scripts/integration_e2e.py can verify external infrastructure
+    # wiring under its own profile name rather than overloading
+    # "production".
+    AEGIS_PROFILE: Literal["production", "demo", "integration"] = Field(default="production")
 
     LLM_PROVIDER: str = Field(default="groq")
     LLM_MODEL: str = Field(default="qwen/qwen3-32b")
@@ -75,7 +80,7 @@ class AppSettings(BaseSettings):
 
         missing_fields: list[str] = []
 
-        if self.AEGIS_PROFILE == "production":
+        if self.AEGIS_PROFILE in ("production", "integration"):
             if not self.GROQ_API_KEY or not self.GROQ_API_KEY.get_secret_value():
                 missing_fields.append("GROQ_API_KEY")
 

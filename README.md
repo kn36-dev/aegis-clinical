@@ -112,24 +112,27 @@ Evaluation suites are maintained independently from traditional software tests. 
 
 ---
 
-# Running the Demo (No Credentials Required)
+# Running the Demo (Real Retrieval, Minimal Credentials)
 
-A complete, credential-free run of the clinical pipeline — submission, AI-assisted recommendation, physician review, and persisted decision — is available as a single reproducible command:
+A complete, reproducible run of the clinical pipeline — submission, AI-assisted recommendation, physician review, and persisted decision — is available as a single command:
 
 ```bash
+make db-init && make db-seed-icd   # once, before the first run
 make demo
-# equivalent to: uv run python scripts/demo_e2e.py
+# equivalent to: AEGIS_PROFILE=demo uv run python scripts/demo_e2e.py
 ```
 
-This drives the real FastAPI application (`aegis.api.main.app`) through its HTTP boundary using FastAPI's `TestClient` — the real lifespan, the real LangGraph workflow, and the real interrupt/resume suspension all run exactly as they would under `make dev-backend`. Every adapter that would otherwise require a network credential (Upstash Vector, Upstash Redis, Groq/CrewAI reasoning, ICD-11 taxonomy validation) is substituted with a deterministic in-memory fake, and both SQLite databases live in a temporary directory for the run. No `.env` file or API key is required.
+This drives the real FastAPI application (`aegis.api.main.app`) through its HTTP boundary using FastAPI's `TestClient` — the real lifespan, the real LangGraph workflow, and the real interrupt/resume suspension all run exactly as they would under `make dev-backend`, against the same composition root (`aegis/api/bootstrap.py`) and the same real, locally-seeded `data/clinical_registry.db` that `make demo-server` below uses. Under `AEGIS_PROFILE=demo`, embedding and Upstash Vector retrieval stay real (see "Running the Demo Server" below for why); only the cache, reasoning, and content-repository collaborators are deterministic in-memory substitutes. That means `make demo` needs `UPSTASH_VECTOR_REST_URL`/`UPSTASH_VECTOR_REST_TOKEN` and the `EMBEDDING_*` settings in `.env`, but not `GROQ_API_KEY` or Upstash Redis credentials. Because retrieval is real, the physician's decision in the script is read back from whatever the AI actually recommended, not a hardcoded ICD code.
 
-The same scenario is also expressed as an automated test in `tests/integration/test_clinical_pipeline.py`, including the cache-hit path on a repeat submission:
+A second, credential-free scenario is expressed as an automated test in `tests/integration/test_clinical_pipeline.py` (fake embedding/retrieval too, ephemeral SQLite, no `.env` needed), including the cache-hit path on a repeat submission:
 
 ```bash
 uv run pytest tests/integration/test_clinical_pipeline.py -v
 ```
 
-See `docs/tradeoffs_and_limitations.md` — "Live-Credential Content Seeding Gap" — for the one path this demo intentionally does not attempt: a fresh submission run against the real, credential-backed adapters.
+`make integration` runs the identical script (`scripts/integration_e2e.py`, sharing its workflow logic with `scripts/demo_e2e.py` via `scripts/e2e_common.py`) under `AEGIS_PROFILE=integration` instead: real Redis-backed cache and real CrewAI/Groq reasoning replace demo's in-memory ones, so it also needs `GROQ_API_KEY` and the Upstash Redis credentials. Its purpose is verifying that the full external infrastructure wiring works, not exercising different application logic.
+
+See `docs/tradeoffs_and_limitations.md` — "Live-Credential Content Seeding Gap" — for why both `make demo` and `make integration` submit one of a fixed set of pre-seeded sample notes rather than arbitrary freshly-typed text.
 
 ---
 

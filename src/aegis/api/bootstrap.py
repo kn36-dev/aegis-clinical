@@ -53,14 +53,16 @@ if TYPE_CHECKING:
 
 _KNOWN_EMBEDDING_PROVIDERS = ("openai", "sentence_transformers")
 
-# A small, fixed set of sample notes the demo profile can resolve
-# content_reference against. This exists because of the documented
-# "Live-Credential Content Seeding Gap" (docs/tradeoffs_and_limitations.md):
-# the real SQLiteContentStore cannot associate content with a
-# content_reference before ClinicalNoteService has generated a case_id,
-# so a fresh submission against it always 502s regardless of profile.
-# The demo profile's frontend is expected to submit one of these known
-# references rather than arbitrary freshly-minted ones.
+# A small, fixed set of sample notes the demo and integration profiles
+# can resolve content_reference against. This exists because of the
+# documented "Live-Credential Content Seeding Gap"
+# (docs/tradeoffs_and_limitations.md): the real SQLiteContentStore
+# cannot associate content with a content_reference before
+# ClinicalNoteService has generated a case_id, so a fresh submission
+# against it always 502s regardless of profile. Callers (the demo
+# profile's frontend, scripts/demo_e2e.py, scripts/integration_e2e.py)
+# are expected to submit one of these known references rather than
+# arbitrary freshly-minted ones.
 DEMO_SAMPLE_NOTES: dict[str, str] = {
     "content-store://demo/acute-diarrhea": (
         "Patient presents with acute watery diarrhea and mild dehydration. "
@@ -158,7 +160,7 @@ def build_embedding_provider(
 def build_vector_query_provider(settings: AppSettings) -> VectorQueryProvider:
     """Construct the Upstash Vector runtime query adapter from settings."""
     return UpstashVectorQueryProvider(
-        url=str(settings.UPSTASH_VECTOR_REST_URL),
+        url=str(settings.UPSTASH_VECTOR_REST_URL).rstrip("/"),
         token=settings.UPSTASH_VECTOR_REST_TOKEN.get_secret_value(),
     )
 
@@ -214,7 +216,9 @@ def validate_embedding_compatibility(
         )
 
 
-def open_clinical_connection(settings: AppSettings) -> sqlite3.Connection:
+def open_clinical_connection(
+    settings: AppSettings,
+) -> sqlite3.Connection:
     """
     Run the ordered clinical-registry migrations (idempotent -- every
     migration is ``CREATE TABLE IF NOT EXISTS``, so this is safe to run
@@ -244,9 +248,10 @@ def build_cache_repository(settings: AppSettings) -> ClinicalDecisionCacheReposi
     routing (``graphs.workflow._route_after_cache_lookup``) is
     demonstrated identically either way, since that edge is deterministic
     code operating on whatever ``CacheService`` reports, not on which
-    concrete store backs it. Only the production profile needs the real
-    Redis-backed adapter's persistence-across-restarts and shared-cache
-    behavior.
+    concrete store backs it. Production and integration profiles both
+    need the real Redis-backed adapter's persistence-across-restarts
+    and shared-cache behavior -- integration exists specifically to
+    verify that adapter against real infrastructure.
     """
     if settings.AEGIS_PROFILE == "demo":
         return FakeClinicalDecisionCacheRepository()
@@ -270,7 +275,10 @@ def build_reasoning_provider(settings: AppSettings) -> ReasoningProvider:
     reasoning over the same real ``ReasoningContext`` real retrieval
     produced -- see that class's docstring for why a naive hardcoded-code
     fake cannot satisfy ``ClinicalReasoningService``'s validation once
-    retrieval is real.
+    retrieval is real. Production and integration profiles both use the
+    real ``CrewAIReasoningProvider`` -- integration exists specifically
+    to verify that adapter (and the Groq credential behind it) against
+    real infrastructure.
     """
     if settings.AEGIS_PROFILE == "demo":
         return DeterministicTopCandidateReasoningProvider()
@@ -290,13 +298,16 @@ def build_content_repository(settings: AppSettings) -> ClinicalNoteContentReposi
     ``settings.AEGIS_PROFILE``, or ``None`` to let ``build_container``
     default to the real ``SQLiteContentStore``.
 
-    Demo profile substitutes the in-memory adapter pre-seeded with
-    ``DEMO_SAMPLE_NOTES`` -- see that constant's docstring for why this
-    is not a demo-mode preference but a workaround for the documented
-    "Live-Credential Content Seeding Gap", which blocks a fresh
-    submission against the real content store in *either* profile today.
+    Demo and integration profiles both substitute the in-memory adapter
+    pre-seeded with ``DEMO_SAMPLE_NOTES`` -- see that constant's
+    docstring for why this is not a demo/integration-mode preference
+    but a workaround for the documented "Live-Credential Content
+    Seeding Gap", which would block a fresh submission against the real
+    ``SQLiteContentStore`` in any profile. "production" is left
+    defaulting to the real store since it is not driven by an
+    e2e script that submits fresh content on every run.
     """
-    if settings.AEGIS_PROFILE == "demo":
+    if settings.AEGIS_PROFILE in ("demo", "integration"):
         return FakeContentRepository(content_by_reference=DEMO_SAMPLE_NOTES)
     return None
 
@@ -309,7 +320,7 @@ def build_infrastructure(settings: AppSettings, connection: sqlite3.Connection) 
 
     Embedding, vector retrieval, and ICD taxonomy validation are
     constructed identically regardless of ``settings.AEGIS_PROFILE`` --
-    both profiles run the same real semantic retrieval pipeline against
+    every profile runs the same real semantic retrieval pipeline against
     the same real Upstash Vector index. Only ``build_cache_repository``,
     ``build_reasoning_provider``, and ``build_content_repository`` branch
     on profile, each in exactly one place.
@@ -332,7 +343,9 @@ def build_infrastructure(settings: AppSettings, connection: sqlite3.Connection) 
         vector_query_provider=vector_query_provider,
         reasoning_provider=build_reasoning_provider(settings),
         reasoning_model_name=(
-            DEMO_REASONING_MODEL_NAME if settings.AEGIS_PROFILE == "demo" else settings.LLM_MODEL
+            DEMO_REASONING_MODEL_NAME
+            if settings.AEGIS_PROFILE == "demo"
+            else settings.LLM_MODEL  # real model name for both production and integration
         ),
         icd_code_validator=icd_code_validator,
         content_repository=build_content_repository(settings),
