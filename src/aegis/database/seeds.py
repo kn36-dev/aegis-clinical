@@ -15,7 +15,7 @@ from aegis.database.database import init_clinical_database
 logger = logging.getLogger("aegis.database.seeds")
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
-DEFAULT_CSV_PATH = ROOT_DIR / "data" / "icd11_mms_simplified.csv"
+DEFAULT_CSV_PATH = ROOT_DIR / "data" / "only_medical_symptoms.csv"
 DEFAULT_JSON_PATH = ROOT_DIR / "data" / "mock_clinical_cases.json"
 DEFAULT_DB_PATH = ROOT_DIR / "data" / "clinical_registry.db"
 
