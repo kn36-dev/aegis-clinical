@@ -15,6 +15,7 @@ see ``aegis.api.dependencies``.
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+import aiosqlite
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -24,6 +25,7 @@ from aegis.api.bootstrap import build_infrastructure, open_clinical_connection
 from aegis.api.routers import clinical, review
 from aegis.common.logging import get_logger
 from aegis.config import get_settings
+from aegis.graphs.checkpoint_serde import build_checkpoint_serializer
 
 logger = get_logger(__name__)
 
@@ -35,7 +37,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     connection = open_clinical_connection(settings)
     container = build_infrastructure(settings, connection)
 
-    async with AsyncSqliteSaver.from_conn_string(settings.GRAPH_CHECKPOINT_DB_PATH) as saver:
+    async with aiosqlite.connect(settings.GRAPH_CHECKPOINT_DB_PATH) as conn:
+        saver = AsyncSqliteSaver(conn, serde=build_checkpoint_serializer())
         await saver.setup()
 
         app.state.container = container

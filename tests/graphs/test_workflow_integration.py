@@ -13,14 +13,19 @@ beyond the declared domain artifacts.
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
+import aiosqlite
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.types import Command
 
+from aegis.graphs.checkpoint_serde import build_checkpoint_serializer
 from aegis.graphs.state import AegisWorkflowState
 from aegis.graphs.workflow import build_aegis_graph
 from aegis.models.base import DomainModel
@@ -49,6 +54,8 @@ from aegis.services.persistence_service import PersistenceResult, PersistenceSer
 from aegis.services.retrieval_service import RetrievalService
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from langchain_core.runnables import RunnableConfig
 
     from aegis.models.reasoning_context import ReasoningContext
@@ -602,3 +609,112 @@ class TestStateIntegrity:
         assert set(final_state.keys()) <= set(AegisWorkflowState.__annotations__)
         for value in final_state.values():
             assert isinstance(value, DomainModel)
+
+
+async def _run_pause_then_restore_and_resume(
+    db_path: Path,
+    serde: JsonPlusSerializer,
+    *,
+    clinical_note_service: FakeClinicalNoteService,
+    normalization_service: FakeNormalizationService,
+    cache_service: FakeCacheService,
+    retrieval_service: FakeRetrievalService,
+    context_assembler: RecordingContextAssembler,
+    clinical_reasoning_service: FakeClinicalReasoningService,
+    clinical_decision_service: FakeClinicalDecisionService,
+    persistence_service: FakePersistenceService,
+) -> AegisWorkflowState:
+    """
+    Drive the workflow through a pause and a resume, reopening the sqlite
+    checkpoint file (and a fresh checkpointer/graph instance) in between
+    -- proving resume works from a *restored* checkpoint, not merely from
+    in-memory graph state that happened to survive.
+    """
+    submission = make_submission()
+    config = make_config()
+
+    def build(checkpointer: AsyncSqliteSaver):
+        return build_aegis_graph(
+            clinical_note_service,
+            normalization_service,
+            cache_service,
+            retrieval_service,
+            context_assembler,
+            clinical_reasoning_service,
+            clinical_decision_service,
+            persistence_service,
+            retrieval_top_k=3,
+            retrieval_similarity_threshold=0.5,
+            checkpointer=checkpointer,
+        )
+
+    async with aiosqlite.connect(str(db_path)) as conn:
+        saver = AsyncSqliteSaver(conn, serde=serde)
+        await saver.setup()
+        paused_state = await build(saver).ainvoke({"submission": submission}, config=config)
+
+    assert "__interrupt__" in paused_state
+
+    # Simulate a process restart: a brand-new connection, checkpointer, and
+    # compiled graph, all pointed at the same on-disk checkpoint file.
+    async with aiosqlite.connect(str(db_path)) as conn:
+        saver = AsyncSqliteSaver(conn, serde=serde)
+        await saver.setup()
+        coding_recommendation = paused_state["coding_recommendation"]
+        physician_submission = make_physician_submission(
+            coding_recommendation,
+            patient_id=submission.patient_id,
+            normalization_version=paused_state["normalized_note"].normalization_version,
+        )
+        final_state = await build(saver).ainvoke(
+            Command(resume=physician_submission), config=config
+        )
+
+    return cast("AegisWorkflowState", final_state)
+
+
+class TestCheckpointSerialization:
+    """
+    Proves the explicit ``allowed_msgpack_modules`` registration in
+    ``aegis.graphs.checkpoint_serde`` (see
+    ``docs/tradeoffs_and_limitations.md``) actually does its job: the
+    real workflow can pause, have its checkpoint written to and restored
+    from sqlite, and resume to completion without LangGraph logging an
+    "unregistered type" warning for any ``AegisWorkflowState`` domain
+    model.
+    """
+
+    def test_registered_serializer_round_trips_without_warnings(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+        clinical_note_service: FakeClinicalNoteService,
+        normalization_service: FakeNormalizationService,
+        cache_service: FakeCacheService,
+        retrieval_service: FakeRetrievalService,
+        context_assembler: RecordingContextAssembler,
+        clinical_reasoning_service: FakeClinicalReasoningService,
+        clinical_decision_service: FakeClinicalDecisionService,
+        persistence_service: FakePersistenceService,
+    ) -> None:
+        caplog.set_level(logging.WARNING, logger="langgraph.checkpoint.serde.jsonplus")
+
+        final_state = asyncio.run(
+            _run_pause_then_restore_and_resume(
+                tmp_path / "graph_checkpoints.db",
+                build_checkpoint_serializer(),
+                clinical_note_service=clinical_note_service,
+                normalization_service=normalization_service,
+                cache_service=cache_service,
+                retrieval_service=retrieval_service,
+                context_assembler=context_assembler,
+                clinical_reasoning_service=clinical_reasoning_service,
+                clinical_decision_service=clinical_decision_service,
+                persistence_service=persistence_service,
+            )
+        )
+        for record in caplog.records:
+            print(record.name, record.levelname, record.message)
+
+        assert "clinical_decision" in final_state
+        assert not any("unregistered type" in record.message for record in caplog.records)
