@@ -18,17 +18,46 @@ is initialized to ``"pending_ai"``, the entry point of the documented
 status lifecycle (``PENDING_AI`` -> ``PENDING_HITL`` / ``ARCHIVED``). Neither
 value is read back into the reconstructed ``ClinicalNote`` -- they never
 cross the repository boundary outward.
+
+``mark_pending_review``/``mark_archived``/``list_pending_review`` (Slice 4)
+maintain and read that same ``status`` column as a queryable projection of
+the workflow lifecycle -- not a second source of truth. LangGraph's own
+checkpointed state remains authoritative for what a workflow may do next
+(resume, routing); these methods only let a review queue find candidate
+cases without scanning/deserializing checkpoint history. Callers (the HTTP
+routers) write this projection immediately after observing the same
+outcome from ``graph.ainvoke`` that the workflow itself already produced --
+never as an independent decision.
 """
 
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
 from aegis.models.clinical_note import ClinicalNote
 
 _INITIAL_CASE_STATUS = "pending_ai"
+_PENDING_REVIEW_STATUS = "pending_hitl"
+_ARCHIVED_STATUS = "archived"
+
+
+@dataclass(frozen=True)
+class PendingReviewCase:
+    """
+    One row of the review queue projection.
+
+    A read model over ``patient_case``, not a runtime domain contract
+    artifact -- it exists solely to let a queue listing be built from a
+    cheap SQL query instead of enumerating LangGraph checkpoints.
+    """
+
+    case_id: UUID
+    patient_id: UUID
+    workflow_id: UUID
+    submitted_at: datetime
 
 
 class SQLiteClinicalNoteRepository:
@@ -127,3 +156,50 @@ class SQLiteClinicalNoteRepository:
             content_reference=content_reference,
             created_at=datetime.fromisoformat(row["ingress_timestamp"]),
         )
+
+    def mark_pending_review(self, case_id: UUID) -> None:
+        """Project that ``case_id``'s workflow is suspended awaiting physician review."""
+        self._update_status(case_id, _PENDING_REVIEW_STATUS)
+
+    def mark_archived(self, case_id: UUID) -> None:
+        """Project that ``case_id``'s workflow has reached a terminal ``ClinicalDecision``."""
+        self._update_status(case_id, _ARCHIVED_STATUS)
+
+    def _update_status(self, case_id: UUID, status: str) -> None:
+        try:
+            self._conn.execute(
+                "UPDATE patient_case SET status = ? WHERE case_id = ?;",
+                (status, str(case_id)),
+            )
+            self._conn.commit()
+        except sqlite3.Error:
+            self._conn.rollback()
+            raise
+
+    def list_pending_review(self) -> list[PendingReviewCase]:
+        """
+        Cases currently suspended at ``human_review_pending``, oldest first.
+
+        Reads only the ``status`` projection maintained by
+        ``mark_pending_review``/``mark_archived`` -- never inspects or
+        deserializes LangGraph checkpoint state.
+        """
+        rows = self._conn.execute(
+            """
+            SELECT case_id, patient_id, thread_id, ingress_timestamp
+            FROM patient_case
+            WHERE status = ?
+            ORDER BY ingress_timestamp ASC;
+            """,
+            (_PENDING_REVIEW_STATUS,),
+        ).fetchall()
+
+        return [
+            PendingReviewCase(
+                case_id=UUID(row["case_id"]),
+                patient_id=UUID(row["patient_id"]),
+                workflow_id=UUID(row["thread_id"]),
+                submitted_at=datetime.fromisoformat(row["ingress_timestamp"]),
+            )
+            for row in rows
+        ]

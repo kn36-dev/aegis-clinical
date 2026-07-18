@@ -84,24 +84,43 @@ class FakeIngestContentRepository:
         )
 
 
+class FakeClinicalNoteRepository:
+    """
+    Records ``mark_pending_review``/``mark_archived`` calls -- stands in for
+    ``AegisContainer.clinical_note_repository``'s Slice 4 status-projection
+    writes (see ``aegis.api.routers.clinical._invoke_workflow``).
+    """
+
+    def __init__(self) -> None:
+        self.pending_review_calls: list[Any] = []
+        self.archived_calls: list[Any] = []
+
+    def mark_pending_review(self, case_id: Any) -> None:
+        self.pending_review_calls.append(case_id)
+
+    def mark_archived(self, case_id: Any) -> None:
+        self.archived_calls.append(case_id)
+
+
 class FakeContainer:
-    """Minimal stand-in for ``AegisContainer`` -- only the two fields the ingest route touches."""
+    """Minimal stand-in for ``AegisContainer`` -- only the fields the clinical router touches."""
 
     def __init__(
         self,
-        clinical_note_service: FakeClinicalNoteService,
-        content_repository: FakeIngestContentRepository,
+        clinical_note_service: FakeClinicalNoteService | None = None,
+        content_repository: FakeIngestContentRepository | None = None,
+        clinical_note_repository: FakeClinicalNoteRepository | None = None,
     ) -> None:
-        self.clinical_note_service = clinical_note_service
-        self.content_repository = content_repository
+        self.clinical_note_service = clinical_note_service or FakeClinicalNoteService()
+        self.content_repository = content_repository or FakeIngestContentRepository()
+        self.clinical_note_repository = clinical_note_repository or FakeClinicalNoteRepository()
 
 
 def make_app(fake_graph: FakeCompiledGraph, container: Any = None) -> FastAPI:
     app = FastAPI()
     app.include_router(clinical.router, prefix="/api/v1")
     app.dependency_overrides[get_graph] = lambda: fake_graph
-    if container is not None:
-        app.dependency_overrides[get_container] = lambda: container
+    app.dependency_overrides[get_container] = lambda: container or FakeContainer()
     return app
 
 
@@ -133,7 +152,8 @@ def test_successful_submission_reaches_graph_with_submission_and_thread_id() -> 
         created_at=FIXED_TIME,
     )
     fake_graph = FakeCompiledGraph(result={"clinical_decision": decision})
-    client = TestClient(make_app(fake_graph))
+    container = FakeContainer()
+    client = TestClient(make_app(fake_graph, container=container))
     payload = make_payload()
 
     response = client.post("/api/v1/clinical-notes", json=payload)
@@ -150,6 +170,11 @@ def test_successful_submission_reaches_graph_with_submission_and_thread_id() -> 
     assert str(invoked_state["submission"].patient_id) == payload["patient_id"]
     assert invoked_state["submission"].content_reference == payload["content_reference"]
     assert "thread_id" in fake_graph.calls[0]["config"]["configurable"]
+
+    # Slice 4: a completed workflow projects patient_case.status -> archived,
+    # so this case stops appearing in the review queue.
+    assert container.clinical_note_repository.archived_calls == [decision.case_id]
+    assert container.clinical_note_repository.pending_review_calls == []
 
 
 def test_router_does_not_import_application_services_directly() -> None:
@@ -182,7 +207,8 @@ def test_pending_review_state_returned_correctly() -> None:
     fake_graph = FakeCompiledGraph(
         result={"clinical_note": clinical_note, "__interrupt__": ("pending",)}
     )
-    client = TestClient(make_app(fake_graph))
+    container = FakeContainer()
+    client = TestClient(make_app(fake_graph, container=container))
 
     response = client.post("/api/v1/clinical-notes", json=make_payload())
 
@@ -193,10 +219,16 @@ def test_pending_review_state_returned_correctly() -> None:
     assert body["decision_id"] is None
     assert body["approved_icd_codes"] is None
 
+    # Slice 4: a suspended workflow projects patient_case.status -> pending_hitl,
+    # so this case appears in the review queue.
+    assert container.clinical_note_repository.pending_review_calls == [clinical_note.case_id]
+    assert container.clinical_note_repository.archived_calls == []
+
 
 def test_graph_invocation_failure_translated_without_leaking_internals() -> None:
     fake_graph = FakeCompiledGraph(error=RuntimeError("sqlite3.OperationalError: disk I/O error"))
-    client = TestClient(make_app(fake_graph))
+    container = FakeContainer()
+    client = TestClient(make_app(fake_graph, container=container))
 
     response = client.post("/api/v1/clinical-notes", json=make_payload())
 
@@ -204,16 +236,21 @@ def test_graph_invocation_failure_translated_without_leaking_internals() -> None
     body = response.json()
     assert "disk I/O error" not in body["detail"]
     assert body["detail"] == "Clinical workflow execution failed."
+    assert container.clinical_note_repository.pending_review_calls == []
+    assert container.clinical_note_repository.archived_calls == []
 
 
 def test_invalid_submission_is_rejected_before_reaching_graph() -> None:
     fake_graph = FakeCompiledGraph(result={"clinical_decision": None})
-    client = TestClient(make_app(fake_graph))
+    container = FakeContainer()
+    client = TestClient(make_app(fake_graph, container=container))
 
     response = client.post("/api/v1/clinical-notes", json={"patient_id": str(uuid4())})
 
     assert response.status_code == 422
     assert fake_graph.calls == []
+    assert container.clinical_note_repository.pending_review_calls == []
+    assert container.clinical_note_repository.archived_calls == []
 
 
 def test_ingest_persists_clinical_note_then_seeds_content_then_invokes_graph() -> None:
@@ -262,6 +299,8 @@ def test_ingest_persists_clinical_note_then_seeds_content_then_invokes_graph() -
     invoked_state = fake_graph.calls[0]["state"]
     assert invoked_state["case_id"] == minted_case_id
     assert invoked_state["submission"].content_reference == minted_submission.content_reference
+
+    assert container.clinical_note_repository.archived_calls == [decision.case_id]
 
 
 def test_ingest_rejects_blank_note_text_before_touching_anything() -> None:

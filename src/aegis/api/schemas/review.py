@@ -15,6 +15,7 @@ decision into the ``aegis.services.clinical_decision_service
 
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
 from uuid import UUID
 
@@ -78,6 +79,24 @@ class ReviewStateResponse(BaseModel):
 
     decision_id: UUID | None = None
     approved_icd_codes: list[ApprovedICDCodeResponse] | None = None
+
+
+class PendingReviewSummaryResponse(BaseModel):
+    """
+    One entry in the review queue (``GET /api/v1/reviews``).
+
+    Deliberately thin -- carries only what a physician needs to select a
+    case to open, not the recommendation content ``ReviewStateResponse``
+    already exposes at ``GET /api/v1/reviews/{thread_id}``. ``status`` is
+    always ``PENDING_REVIEW`` here: this listing never surfaces completed
+    cases (see ``aegis.api.routers.review.list_pending_reviews``).
+    """
+
+    workflow_id: UUID
+    case_id: UUID
+    patient_id: UUID
+    status: ReviewWorkflowStatus
+    submitted_at: datetime
 
 
 class PhysicianDecisionSubmissionRequest(BaseModel):

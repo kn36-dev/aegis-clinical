@@ -33,6 +33,15 @@ export interface ReviewStateResponse {
   approved_icd_codes?: ApprovedICDCodeResponse[];
 }
 
+/** One entry in the review queue (GET /api/v1/reviews). */
+export interface PendingReviewSummaryResponse {
+  workflow_id: UUID;
+  case_id: UUID;
+  patient_id: UUID;
+  status: ReviewWorkflowStatus;
+  submitted_at: string;
+}
+
 export interface PhysicianDecisionSubmissionRequest {
   selected_icd_codes: ICDCode[];
 }

@@ -17,17 +17,18 @@ state back into an HTTP response.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID  # noqa: TC003
 
 from fastapi import APIRouter, Depends, HTTPException
 from langgraph.types import Command
 
-from aegis.api.dependencies import get_graph, get_identity_context
+from aegis.api.dependencies import get_container, get_graph, get_identity_context
 from aegis.api.schemas.errors import ErrorResponse
 from aegis.api.schemas.identity import RequestIdentityContext  # noqa: TC001
 from aegis.api.schemas.review import (
     ApprovedICDCodeResponse,
+    PendingReviewSummaryResponse,
     PhysicianDecisionSubmissionRequest,
     RecommendedICDCodeResponse,
     ReviewDecisionResponse,
@@ -36,7 +37,48 @@ from aegis.api.schemas.review import (
 )
 from aegis.models.workflow_commands import PhysicianDecisionSubmission
 
+if TYPE_CHECKING:
+    from aegis.application.container import AegisContainer
+
 router = APIRouter()
+
+
+@router.get(
+    "",
+    response_model=list[PendingReviewSummaryResponse],
+)
+async def list_pending_reviews(
+    container: AegisContainer = Depends(get_container),
+    identity: RequestIdentityContext = Depends(get_identity_context),
+) -> list[PendingReviewSummaryResponse]:
+    """
+    List cases currently suspended awaiting physician review, oldest first.
+
+    Reads ``patient_case.status`` (a persistence-backed projection
+    maintained alongside the graph invocations in
+    ``aegis.api.routers.clinical``/this module's own
+    ``submit_review_decision`` -- see
+    ``SQLiteClinicalNoteRepository.list_pending_review``), never a
+    client-side or session-scoped queue. LangGraph's own checkpointed
+    state remains the authority on whether a given workflow can actually
+    be resumed; this endpoint only helps a physician find candidates to
+    open via ``GET /api/v1/reviews/{thread_id}``, which still reads that
+    authoritative state directly.
+
+    Deliberately thin: no recommendation content, normalized text, or
+    reasoning summary -- those belong to the per-case detail endpoint
+    below, not this inbox listing.
+    """
+    return [
+        PendingReviewSummaryResponse(
+            workflow_id=case.workflow_id,
+            case_id=case.case_id,
+            patient_id=case.patient_id,
+            status=ReviewWorkflowStatus.PENDING_REVIEW,
+            submitted_at=case.submitted_at,
+        )
+        for case in container.clinical_note_repository.list_pending_review()
+    ]
 
 
 def _thread_config(thread_id: UUID) -> dict[str, Any]:
@@ -159,6 +201,7 @@ async def submit_review_decision(
     thread_id: UUID,
     payload: PhysicianDecisionSubmissionRequest,
     graph: Any = Depends(get_graph),
+    container: AegisContainer = Depends(get_container),
     identity: RequestIdentityContext = Depends(get_identity_context),
 ) -> ReviewDecisionResponse:
     """
@@ -181,6 +224,12 @@ async def submit_review_decision(
     ``ClinicalDecision`` defines an actor field today, so ``identity`` is
     not threaded any further and this endpoint's business behavior is
     unchanged.
+
+    Once the graph resumes to completion, ``container.clinical_note_repository``
+    is also stamped ``archived`` (Slice 4's review-queue projection --
+    see ``aegis.api.routers.clinical._invoke_workflow`` for the same
+    projection on the initial-submission path) so this case stops
+    appearing in ``GET /api/v1/reviews``.
     """
     config = _thread_config(thread_id)
 
@@ -231,6 +280,7 @@ async def submit_review_decision(
         )
 
     decision = result["clinical_decision"]
+    container.clinical_note_repository.mark_archived(decision.case_id)
     return ReviewDecisionResponse(
         workflow_id=thread_id,
         case_id=decision.case_id,

@@ -22,7 +22,7 @@ from fastapi.responses import JSONResponse
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 
 from aegis.api.bootstrap import build_infrastructure, open_clinical_connection
-from aegis.api.routers import clinical, demo, review
+from aegis.api.routers import clinical, demo, review, workflow
 from aegis.common.logging import get_logger
 from aegis.config import get_settings
 from aegis.graphs.checkpoint_serde import build_checkpoint_serializer
@@ -69,6 +69,7 @@ app.add_middleware(
 # Register all systems endpoints under a single server execution context
 app.include_router(clinical.router, prefix="/api/v1", tags=["Ingress"])
 app.include_router(review.router, prefix="/api/v1/reviews", tags=["HITL Review"])
+app.include_router(workflow.router, prefix="/api/v1/workflows", tags=["Workflow Observability"])
 app.include_router(demo.router, prefix="/api/v1/demo", tags=["Demo"])
 
 

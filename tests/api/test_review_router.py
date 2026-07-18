@@ -23,8 +23,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from langgraph.types import Command, Interrupt
 
-from aegis.api.dependencies import get_graph
+from aegis.api.dependencies import get_container, get_graph
 from aegis.api.routers import review
+from aegis.infrastructure.sqlite.clinical_note_repository import PendingReviewCase
 from aegis.models.clinical_decision import (
     ApprovedICDClassification,
     ClinicalDecision,
@@ -41,6 +42,31 @@ from aegis.models.normalized_clinical_note import NormalizedClinicalNote
 from aegis.models.workflow_commands import ClinicalNoteSubmission, PhysicianDecisionSubmission
 
 FIXED_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+class FakeClinicalNoteRepository:
+    """
+    Records ``mark_archived`` calls and returns a configurable queue for
+    ``list_pending_review`` -- stands in for
+    ``AegisContainer.clinical_note_repository``.
+    """
+
+    def __init__(self, pending_review: list[PendingReviewCase] | None = None) -> None:
+        self.archived_calls: list[Any] = []
+        self._pending_review = pending_review if pending_review is not None else []
+
+    def mark_archived(self, case_id: Any) -> None:
+        self.archived_calls.append(case_id)
+
+    def list_pending_review(self) -> list[PendingReviewCase]:
+        return self._pending_review
+
+
+class FakeContainer:
+    """Minimal stand-in for ``AegisContainer`` -- only the field the review router touches."""
+
+    def __init__(self, clinical_note_repository: FakeClinicalNoteRepository | None = None) -> None:
+        self.clinical_note_repository = clinical_note_repository or FakeClinicalNoteRepository()
 
 
 @dataclass
@@ -77,10 +103,11 @@ class FakeCompiledGraph:
         return self.invoke_result
 
 
-def make_app(fake_graph: FakeCompiledGraph) -> FastAPI:
+def make_app(fake_graph: FakeCompiledGraph, container: Any = None) -> FastAPI:
     app = FastAPI()
     app.include_router(review.router, prefix="/api/v1/reviews")
     app.dependency_overrides[get_graph] = lambda: fake_graph
+    app.dependency_overrides[get_container] = lambda: container or FakeContainer()
     return app
 
 
@@ -249,7 +276,8 @@ def test_post_decision_resumes_graph_with_state_derived_submission() -> None:
         snapshot=snapshot,
         invoke_result={"clinical_decision": decision},
     )
-    client = TestClient(make_app(fake_graph))
+    container = FakeContainer()
+    client = TestClient(make_app(fake_graph, container=container))
 
     response = client.post(
         f"/api/v1/reviews/{thread_id}/decision",
@@ -274,6 +302,10 @@ def test_post_decision_resumes_graph_with_state_derived_submission() -> None:
     )
     assert resumed_submission.selected_icd_codes == ["1A00"]
     assert fake_graph.invoke_calls[0]["config"]["configurable"]["thread_id"] == str(thread_id)
+
+    # Slice 4: resuming to completion projects patient_case.status -> archived,
+    # so this case stops appearing in the review queue.
+    assert container.clinical_note_repository.archived_calls == [decision.case_id]
 
 
 def test_post_decision_when_not_pending_returns_409() -> None:
@@ -317,6 +349,47 @@ def test_post_decision_resume_failure_translated_without_leaking_internals() -> 
 
     assert response.status_code == 502
     assert "ConnectionError" not in response.json()["detail"]
+
+
+def test_list_pending_reviews_returns_queue_entries_oldest_first() -> None:
+    older = PendingReviewCase(
+        case_id=uuid4(),
+        patient_id=uuid4(),
+        workflow_id=uuid4(),
+        submitted_at=FIXED_TIME,
+    )
+    fake_graph = FakeCompiledGraph()
+    container = FakeContainer(FakeClinicalNoteRepository(pending_review=[older]))
+    client = TestClient(make_app(fake_graph, container=container))
+
+    response = client.get("/api/v1/reviews")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body == [
+        {
+            "workflow_id": str(older.workflow_id),
+            "case_id": str(older.case_id),
+            "patient_id": str(older.patient_id),
+            "status": "pending_review",
+            "submitted_at": "2026-01-01T00:00:00Z",
+        }
+    ]
+    # A queue listing must never touch the graph -- it only reads the
+    # persistence-backed status projection.
+    assert fake_graph.state_calls == []
+    assert fake_graph.invoke_calls == []
+
+
+def test_list_pending_reviews_returns_empty_list_when_nothing_pending() -> None:
+    fake_graph = FakeCompiledGraph()
+    container = FakeContainer(FakeClinicalNoteRepository(pending_review=[]))
+    client = TestClient(make_app(fake_graph, container=container))
+
+    response = client.get("/api/v1/reviews")
+
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 def test_router_does_not_import_application_services_directly() -> None:

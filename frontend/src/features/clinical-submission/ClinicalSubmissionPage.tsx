@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { ingestClinicalNote } from "../../api/clinicalApi";
 import { ApiError } from "../../api/httpClient";
+import { getWorkflowObservability } from "../../api/workflowApi";
 import type { ClinicalNoteIngestionResponse } from "../../domain/clinical";
-import { WorkflowStageTimeline } from "../workflow-visibility/WorkflowStageTimeline";
+import {
+  WorkflowStageTimeline,
+  type WorkflowObservabilityState,
+} from "../workflow-visibility/WorkflowStageTimeline";
 import { PatientSelector } from "./components/PatientSelector";
 
 type SubmitState =
@@ -128,10 +132,37 @@ export function ClinicalSubmissionPage() {
 }
 
 function SubmissionResult({ result }: { result: ClinicalNoteIngestionResponse }) {
+  const [observabilityState, setObservabilityState] = useState<WorkflowObservabilityState>({
+    kind: "loading",
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    getWorkflowObservability(result.workflow_id)
+      .then((observability) => {
+        if (!cancelled) {
+          setObservabilityState({ kind: "loaded", observability });
+        }
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return;
+        }
+        const message =
+          error instanceof ApiError ? error.detail : "Failed to load workflow history.";
+        setObservabilityState({ kind: "error", message });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [result.workflow_id]);
+
   return (
     <div className="clinical-submission-result" role="status" aria-live="polite">
       <p>{STATUS_MESSAGE[result.status]}</p>
-      <WorkflowStageTimeline status={result.status} />
+      <WorkflowStageTimeline state={observabilityState} />
       <dl className="clinical-submission-result__meta">
         <div>
           <dt>Case ID</dt>

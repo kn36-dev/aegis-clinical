@@ -42,6 +42,7 @@ from aegis.models.workflow_commands import ClinicalNoteSubmission
 if TYPE_CHECKING:
     from aegis.api.schemas.identity import RequestIdentityContext
     from aegis.application.container import AegisContainer
+    from aegis.infrastructure.sqlite.clinical_note_repository import SQLiteClinicalNoteRepository
 
 router = APIRouter()
 
@@ -51,6 +52,7 @@ async def _invoke_workflow(
     submission: ClinicalNoteSubmission,
     case_id: UUID,
     response: Response,
+    clinical_note_repository: SQLiteClinicalNoteRepository,
 ) -> ClinicalNoteIngestionResponse:
     """
     Invoke the AEGIS workflow graph under ``case_id`` and translate its
@@ -59,6 +61,14 @@ async def _invoke_workflow(
     Shared tail of both ingestion routes below -- everything upstream of
     this (how ``submission``/``case_id`` came to exist) differs; the
     graph invocation and response mapping do not.
+
+    Also projects the outcome onto ``patient_case.status`` (Slice 4's
+    review-queue discovery mechanism) via ``clinical_note_repository`` --
+    LangGraph's own checkpointed state remains authoritative for what
+    this workflow may do next; this write only lets a queue listing find
+    candidate cases without deserializing checkpoint history. It uses
+    exactly the same branch this function already computes the HTTP
+    response from, never a separate decision.
     """
     config = {"configurable": {"thread_id": str(case_id)}}
 
@@ -74,6 +84,7 @@ async def _invoke_workflow(
     if "clinical_decision" in result:
         # Workflow completed with clinical_decision available.
         decision = result["clinical_decision"]
+        clinical_note_repository.mark_archived(decision.case_id)
         response.status_code = 201
         return ClinicalNoteIngestionResponse(
             workflow_id=case_id,
@@ -90,6 +101,7 @@ async def _invoke_workflow(
         )
 
     if "__interrupt__" in result:
+        clinical_note_repository.mark_pending_review(result["clinical_note"].case_id)
         return ClinicalNoteIngestionResponse(
             workflow_id=case_id,
             case_id=result["clinical_note"].case_id,
@@ -114,6 +126,7 @@ async def submit_clinical_note(
     payload: ClinicalNoteIngestionRequest,
     response: Response,
     graph: Any = Depends(get_graph),
+    container: AegisContainer = Depends(get_container),
     identity: RequestIdentityContext = Depends(get_identity_context),
 ) -> ClinicalNoteIngestionResponse:
     """
@@ -151,7 +164,9 @@ async def submit_clinical_note(
     # ``patient_case.thread_id``, the LangGraph checkpoint thread id, and
     # this case's identity are always the same value end to end.
     case_id = uuid4()
-    return await _invoke_workflow(graph, submission, case_id, response)
+    return await _invoke_workflow(
+        graph, submission, case_id, response, container.clinical_note_repository
+    )
 
 
 @router.post(
@@ -203,4 +218,6 @@ async def ingest_clinical_note(
     container.clinical_note_service.create_clinical_note(submission, case_id=case_id)
     container.content_repository.save_content(case_id, content_reference, payload.note_text)
 
-    return await _invoke_workflow(graph, submission, case_id, response)
+    return await _invoke_workflow(
+        graph, submission, case_id, response, container.clinical_note_repository
+    )

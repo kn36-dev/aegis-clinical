@@ -23,7 +23,7 @@ from fastapi.testclient import TestClient
 from starlette.requests import Request
 
 from aegis.api import dependencies
-from aegis.api.dependencies import get_graph, get_identity_context
+from aegis.api.dependencies import get_container, get_graph, get_identity_context
 from aegis.api.routers import clinical, review
 from aegis.api.schemas.identity import RequestIdentityContext
 from aegis.models.clinical_decision import (
@@ -33,6 +33,27 @@ from aegis.models.clinical_decision import (
 )
 
 FIXED_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
+
+
+class FakeClinicalNoteRepository:
+    """
+    No-op stand-in for ``AegisContainer.clinical_note_repository``'s Slice
+    4 status-projection writes -- this module tests the identity boundary,
+    not that projection, so calls are accepted and discarded.
+    """
+
+    def mark_pending_review(self, case_id: object) -> None:
+        pass
+
+    def mark_archived(self, case_id: object) -> None:
+        pass
+
+
+class FakeContainer:
+    """Minimal stand-in for ``AegisContainer`` -- only the field the clinical router touches."""
+
+    def __init__(self) -> None:
+        self.clinical_note_repository = FakeClinicalNoteRepository()
 
 
 def make_request_with_state(state: object) -> Request:
@@ -147,6 +168,7 @@ def test_clinical_submission_endpoint_accepts_identity_without_changing_business
         app.dependency_overrides[get_graph] = lambda: FakeCompiledGraph(
             {"clinical_decision": decision}
         )
+        app.dependency_overrides[get_container] = lambda: FakeContainer()
         return app
 
     payload = {

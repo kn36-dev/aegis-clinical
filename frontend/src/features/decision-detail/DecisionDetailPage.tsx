@@ -2,9 +2,13 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { ApiError } from "../../api/httpClient";
 import { getReviewState, submitReviewDecision } from "../../api/reviewApi";
+import { getWorkflowObservability } from "../../api/workflowApi";
 import type { ICDCode } from "../../domain/common";
 import type { ReviewStateResponse } from "../../domain/review";
-import { WorkflowStageTimeline } from "../workflow-visibility/WorkflowStageTimeline";
+import {
+  WorkflowStageTimeline,
+  type WorkflowObservabilityState,
+} from "../workflow-visibility/WorkflowStageTimeline";
 import { ClinicalContextCard } from "./components/ClinicalContextCard";
 import { RecommendationList } from "./components/RecommendationList";
 import { ReviewHeader } from "./components/ReviewHeader";
@@ -33,6 +37,9 @@ export function DecisionDetailPage() {
 
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [submitState, setSubmitState] = useState<SubmitState>({ kind: "idle" });
+  const [observabilityState, setObservabilityState] = useState<WorkflowObservabilityState>({
+    kind: "loading",
+  });
   // Tracks deviations from "every recommendation approved" rather than the
   // selection itself, so this can start empty and not depend on the review
   // data that only arrives after the fetch below resolves.
@@ -68,6 +75,39 @@ export function DecisionDetailPage() {
 
     return () => {
       cancelled = true;
+    };
+  }, [workflowId]);
+
+  // Best-effort, independent of the review-state fetch above: this
+  // endpoint is purely observational, so its failure must never block
+  // rendering the review itself.
+  function refreshObservability(currentWorkflowId: string, cancelledRef: { current: boolean }) {
+    getWorkflowObservability(currentWorkflowId)
+      .then((observability) => {
+        if (!cancelledRef.current) {
+          setObservabilityState({ kind: "loaded", observability });
+        }
+      })
+      .catch((error: unknown) => {
+        if (cancelledRef.current) {
+          return;
+        }
+        const message =
+          error instanceof ApiError ? error.detail : "Failed to load workflow history.";
+        setObservabilityState({ kind: "error", message });
+      });
+  }
+
+  useEffect(() => {
+    if (!workflowId) {
+      return;
+    }
+
+    const cancelledRef = { current: false };
+    refreshObservability(workflowId, cancelledRef);
+
+    return () => {
+      cancelledRef.current = true;
     };
   }, [workflowId]);
 
@@ -144,6 +184,10 @@ export function DecisionDetailPage() {
           approved_icd_codes: decision.approved_icd_codes,
         },
       });
+      // The resumed workflow now has real post-review checkpoint history
+      // (decide_case/persist_clinical_decision/cache_store) -- refetch so
+      // the timeline reflects it instead of going stale.
+      refreshObservability(workflowId, { current: false });
     } catch (error) {
       const message =
         error instanceof ApiError ? error.detail : "Failed to submit review decision.";
@@ -158,7 +202,7 @@ export function DecisionDetailPage() {
         caseId={review.case_id}
         status={review.status}
       />
-      <WorkflowStageTimeline status={review.status} />
+      <WorkflowStageTimeline state={observabilityState} />
       <ReviewStatusBanner status={review.status} />
       <ClinicalContextCard
         reasoningSummary={review.reasoning_summary}
