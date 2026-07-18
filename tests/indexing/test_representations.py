@@ -113,3 +113,72 @@ def test_build_is_deterministic(
     second = strategy.build(taxonomy_record)
 
     assert first == second
+
+
+def test_context_path_with_arrow_separator_produces_hierarchy():
+    strategy = StructuredProseRepresentation()
+    record = ICDTaxonomyRecord(
+        code="1A08",
+        title="Paratyphoid fever",
+        context_path=(
+            "Gastroenteritis or colitis of infectious origin → "
+            "Bacterial intestinal infections → "
+            "Intestinal infections due to Salmonella → "
+            "Paratyphoid fever"
+        ),
+    )
+
+    document = strategy.build(record)
+
+    assert "L1: Gastroenteritis or colitis of infectious origin" in document.text
+    assert "L2: Bacterial intestinal infections" in document.text
+    assert "L3: Intestinal infections due to Salmonella" in document.text
+
+
+def test_context_path_with_gt_separator_produces_hierarchy():
+    strategy = StructuredProseRepresentation()
+    record = ICDTaxonomyRecord(
+        code="1A08",
+        title="Paratyphoid fever",
+        context_path=(
+            "Gastroenteritis or colitis of infectious origin > "
+            "Bacterial intestinal infections > "
+            "Intestinal infections due to Salmonella > "
+            "Paratyphoid fever"
+        ),
+    )
+
+    document = strategy.build(record)
+
+    assert "L1: Gastroenteritis or colitis of infectious origin" in document.text
+    assert "L2: Bacterial intestinal infections" in document.text
+    assert "L3: Intestinal infections due to Salmonella" in document.text
+
+
+def test_arrow_and_gt_separators_produce_identical_representation_text():
+    strategy = StructuredProseRepresentation()
+    arrow_record = ICDTaxonomyRecord(
+        code="1A08",
+        title="Paratyphoid fever",
+        context_path=(
+            "Gastroenteritis or colitis of infectious origin → "
+            "Bacterial intestinal infections → "
+            "Intestinal infections due to Salmonella → "
+            "Paratyphoid fever"
+        ),
+    )
+    gt_record = ICDTaxonomyRecord(
+        code="1A08",
+        title="Paratyphoid fever",
+        context_path=(
+            "Gastroenteritis or colitis of infectious origin > "
+            "Bacterial intestinal infections > "
+            "Intestinal infections due to Salmonella > "
+            "Paratyphoid fever"
+        ),
+    )
+
+    arrow_document = strategy.build(arrow_record)
+    gt_document = strategy.build(gt_record)
+
+    assert arrow_document.text == gt_document.text

@@ -54,7 +54,13 @@ class StructuredProseRepresentation(RepresentationStrategy):
         ]
 
         if record.context_path:
-            nodes = [n.strip() for n in record.context_path.split("→")]
+            # Taxonomy seeding has historically produced context_path using
+            # either "→" or ">" as the hierarchy separator (see the two
+            # divergent seed scripts, data/seed_icd11.py vs.
+            # src/aegis/database/seeds.py). Accepting both here keeps
+            # representation-building deterministic regardless of which
+            # separator the taxonomy source currently uses.
+            nodes = [n.strip() for n in re.split(r"\s*(?:→|>)\s*", record.context_path)]
 
             parents = nodes[:-1]
 
