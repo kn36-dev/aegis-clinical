@@ -252,6 +252,13 @@ def build_cache_repository(settings: AppSettings) -> ClinicalDecisionCacheReposi
     need the real Redis-backed adapter's persistence-across-restarts
     and shared-cache behavior -- integration exists specifically to
     verify that adapter against real infrastructure.
+
+    Production and integration are given distinct Redis key namespaces
+    (defaulting to the profile name itself, e.g. "production" /
+    "integration") so the two environments cannot share a Redis
+    instance and read or write each other's cached ``ClinicalDecision``
+    entries -- see ``settings.REDIS_CACHE_NAMESPACE``. An explicit
+    ``REDIS_CACHE_NAMESPACE`` overrides the profile-derived default.
     """
     if settings.AEGIS_PROFILE == "demo":
         return FakeClinicalDecisionCacheRepository()
@@ -262,6 +269,7 @@ def build_cache_repository(settings: AppSettings) -> ClinicalDecisionCacheReposi
         url=str(settings.UPSTASH_REDIS_REST_URL),
         token=settings.UPSTASH_REDIS_REST_TOKEN.get_secret_value(),
         ttl_seconds=settings.CACHE_TTL_SECONDS,
+        namespace=settings.REDIS_CACHE_NAMESPACE or settings.AEGIS_PROFILE,
     )
 
 

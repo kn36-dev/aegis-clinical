@@ -49,6 +49,14 @@ class AppSettings(BaseSettings):
     UPSTASH_REDIS_REST_URL: HttpUrl | None = Field(default=None)
     UPSTASH_REDIS_REST_TOKEN: SecretStr | None = Field(default=None)
     CACHE_TTL_SECONDS: int = Field(default=60 * 60 * 24 * 30, gt=0)
+    # Redis key namespace for the cache adapter -- keeps environments
+    # sharing one Upstash Redis instance (e.g. "production" and
+    # "integration") from reading or writing each other's cached
+    # ClinicalDecisions. Left unset by default so bootstrap.py can
+    # derive it from AEGIS_PROFILE; set explicitly to override that
+    # derivation (e.g. running two isolated integration suites against
+    # the same Redis instance).
+    REDIS_CACHE_NAMESPACE: str | None = Field(default=None)
 
     # Embedding <-> vector-index compatibility boundary. There is
     # intentionally no default: an operator must state all three

@@ -5,13 +5,14 @@ from __future__ import annotations
 
 import sqlite3
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from aegis.api.bootstrap import (
     EmbeddingCompatibilityError,
     EmbeddingConfiguration,
+    build_cache_repository,
     build_embedding_provider,
     build_infrastructure,
     open_clinical_connection,
@@ -19,6 +20,12 @@ from aegis.api.bootstrap import (
 )
 from aegis.embeddings.openai import OpenAIEmbeddingProvider
 from aegis.embeddings.sentence_transformers import SentenceTransformersEmbeddingProvider
+from aegis.infrastructure.memory.clinical_decision_cache_repository import (
+    FakeClinicalDecisionCacheRepository,
+)
+from aegis.infrastructure.upstash.clinical_decision_cache_repository import (
+    UpstashClinicalDecisionCacheRepository,
+)
 from tests.application.fakes import FakeEmbeddingProvider
 
 if TYPE_CHECKING:
@@ -128,6 +135,104 @@ class TestOpenClinicalConnection:
             second.execute("SELECT 1 FROM patient_case LIMIT 1;")
         finally:
             second.close()
+
+
+class TestBuildCacheRepository:
+    def test_demo_profile_uses_fake_repository(self) -> None:
+        settings = _SettingsStub(AEGIS_PROFILE="demo")
+
+        repository = build_cache_repository(settings)  # type: ignore[arg-type]
+
+        assert isinstance(repository, FakeClinicalDecisionCacheRepository)
+
+    @patch("aegis.infrastructure.upstash.clinical_decision_cache_repository.Redis")
+    def test_production_profile_namespaces_keys_by_profile_name_by_default(
+        self, mock_redis_cls: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_redis_cls.return_value = mock_client
+        mock_client.get.return_value = None
+        settings = _SettingsStub(
+            AEGIS_PROFILE="production",
+            UPSTASH_REDIS_REST_URL="https://example.upstash.io",
+            UPSTASH_REDIS_REST_TOKEN=MagicMock(get_secret_value=lambda: "token"),
+            CACHE_TTL_SECONDS=60,
+            REDIS_CACHE_NAMESPACE=None,
+        )
+
+        repository = build_cache_repository(settings)  # type: ignore[arg-type]
+        assert isinstance(repository, UpstashClinicalDecisionCacheRepository)
+        repository.get("shared-cache-key")
+
+        mock_client.get.assert_called_once_with("aegis:production:shared-cache-key")
+
+    @patch("aegis.infrastructure.upstash.clinical_decision_cache_repository.Redis")
+    def test_integration_profile_namespaces_keys_by_profile_name_by_default(
+        self, mock_redis_cls: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_redis_cls.return_value = mock_client
+        mock_client.get.return_value = None
+        settings = _SettingsStub(
+            AEGIS_PROFILE="integration",
+            UPSTASH_REDIS_REST_URL="https://example.upstash.io",
+            UPSTASH_REDIS_REST_TOKEN=MagicMock(get_secret_value=lambda: "token"),
+            CACHE_TTL_SECONDS=60,
+            REDIS_CACHE_NAMESPACE=None,
+        )
+
+        repository = build_cache_repository(settings)  # type: ignore[arg-type]
+        repository.get("shared-cache-key")
+
+        mock_client.get.assert_called_once_with("aegis:integration:shared-cache-key")
+
+    @patch("aegis.infrastructure.upstash.clinical_decision_cache_repository.Redis")
+    def test_production_and_integration_defaults_do_not_collide_on_the_same_cache_key(
+        self, mock_redis_cls: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_redis_cls.return_value = mock_client
+        mock_client.get.return_value = None
+        production_settings = _SettingsStub(
+            AEGIS_PROFILE="production",
+            UPSTASH_REDIS_REST_URL="https://example.upstash.io",
+            UPSTASH_REDIS_REST_TOKEN=MagicMock(get_secret_value=lambda: "token"),
+            CACHE_TTL_SECONDS=60,
+            REDIS_CACHE_NAMESPACE=None,
+        )
+        integration_settings = _SettingsStub(
+            AEGIS_PROFILE="integration",
+            UPSTASH_REDIS_REST_URL="https://example.upstash.io",
+            UPSTASH_REDIS_REST_TOKEN=MagicMock(get_secret_value=lambda: "token"),
+            CACHE_TTL_SECONDS=60,
+            REDIS_CACHE_NAMESPACE=None,
+        )
+
+        build_cache_repository(production_settings).get("shared-cache-key")  # type: ignore[arg-type]
+        build_cache_repository(integration_settings).get("shared-cache-key")  # type: ignore[arg-type]
+
+        production_key, integration_key = (call.args[0] for call in mock_client.get.call_args_list)
+        assert production_key != integration_key
+
+    @patch("aegis.infrastructure.upstash.clinical_decision_cache_repository.Redis")
+    def test_explicit_namespace_overrides_the_profile_derived_default(
+        self, mock_redis_cls: MagicMock
+    ) -> None:
+        mock_client = MagicMock()
+        mock_redis_cls.return_value = mock_client
+        mock_client.get.return_value = None
+        settings = _SettingsStub(
+            AEGIS_PROFILE="integration",
+            UPSTASH_REDIS_REST_URL="https://example.upstash.io",
+            UPSTASH_REDIS_REST_TOKEN=MagicMock(get_secret_value=lambda: "token"),
+            CACHE_TTL_SECONDS=60,
+            REDIS_CACHE_NAMESPACE="integration-suite-2",
+        )
+
+        repository = build_cache_repository(settings)  # type: ignore[arg-type]
+        repository.get("shared-cache-key")
+
+        mock_client.get.assert_called_once_with("aegis:integration-suite-2:shared-cache-key")
 
 
 class TestBuildInfrastructure:

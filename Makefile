@@ -65,3 +65,14 @@ demo:
 # in .env. See scripts/integration_e2e.py and scripts/e2e_common.py.
 integration:
 	AEGIS_PROFILE=integration uv run python scripts/integration_e2e.py
+
+# Redis cache-persistence verification.
+#
+# Companion to `make integration`, which must always exercise a cache
+# MISS: this target submits the same logical note twice under a
+# stable namespace to demonstrate the opposite -- cache MISS on the
+# first submission, cache HIT (short-circuiting the graph) on the
+# second. Requires the same prerequisites as `make integration`. See
+# scripts/integration_cache_e2e.py.
+integration-cache:
+	AEGIS_PROFILE=integration uv run python scripts/integration_cache_e2e.py
