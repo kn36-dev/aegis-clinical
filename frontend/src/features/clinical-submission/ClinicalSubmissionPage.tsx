@@ -4,6 +4,8 @@ import { Link } from "react-router-dom";
 import { ingestClinicalNote } from "../../api/clinicalApi";
 import { ApiError } from "../../api/httpClient";
 import type { ClinicalNoteIngestionResponse } from "../../domain/clinical";
+import { WorkflowStageTimeline } from "../workflow-visibility/WorkflowStageTimeline";
+import { PatientSelector } from "./components/PatientSelector";
 
 type SubmitState =
   | { kind: "idle" }
@@ -63,6 +65,7 @@ export function ClinicalSubmissionPage() {
       </p>
 
       <form className="clinical-submission-form" onSubmit={handleSubmit}>
+        <PatientSelector value={patientId} onChange={setPatientId} disabled={isSubmitting} />
         <label className="clinical-submission-form__field">
           <span>Patient ID</span>
           <input
@@ -104,6 +107,7 @@ function SubmissionResult({ result }: { result: ClinicalNoteIngestionResponse })
   return (
     <div className="clinical-submission-result" role="status" aria-live="polite">
       <p>{STATUS_MESSAGE[result.status]}</p>
+      <WorkflowStageTimeline status={result.status} />
       <dl className="clinical-submission-result__meta">
         <div>
           <dt>Case ID</dt>

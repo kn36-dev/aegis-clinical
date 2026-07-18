@@ -215,6 +215,65 @@ code {
   background: var(--code-bg);
 }
 
+.workflow-stage-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workflow-stage-timeline__stages {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.workflow-stage-timeline__stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.workflow-stage-timeline__stage:not(:last-child)::after {
+  content: "→";
+  margin-left: 12px;
+  color: var(--border);
+}
+
+.workflow-stage-timeline__marker {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.workflow-stage-timeline__stage--complete .workflow-stage-timeline__marker {
+  background: var(--text-h);
+}
+
+.workflow-stage-timeline__stage--complete .workflow-stage-timeline__label {
+  color: var(--text-h);
+}
+
+.workflow-stage-timeline__stage--pending .workflow-stage-timeline__marker {
+  background: var(--accent);
+}
+
+.workflow-stage-timeline__stage--pending .workflow-stage-timeline__label {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.workflow-stage-timeline__note {
+  font-size: 13px;
+  color: var(--text);
+}
+
 .clinical-context-card,
 .recommendation-list {
   border: 1px solid var(--border);

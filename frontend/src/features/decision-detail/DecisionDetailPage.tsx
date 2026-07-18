@@ -4,6 +4,7 @@ import { ApiError } from "../../api/httpClient";
 import { getReviewState, submitReviewDecision } from "../../api/reviewApi";
 import type { ICDCode } from "../../domain/common";
 import type { ReviewStateResponse } from "../../domain/review";
+import { WorkflowStageTimeline } from "../workflow-visibility/WorkflowStageTimeline";
 import { ClinicalContextCard } from "./components/ClinicalContextCard";
 import { RecommendationList } from "./components/RecommendationList";
 import { ReviewHeader } from "./components/ReviewHeader";
@@ -157,6 +158,7 @@ export function DecisionDetailPage() {
         caseId={review.case_id}
         status={review.status}
       />
+      <WorkflowStageTimeline status={review.status} />
       <ReviewStatusBanner status={review.status} />
       <ClinicalContextCard
         reasoningSummary={review.reasoning_summary}

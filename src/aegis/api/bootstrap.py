@@ -86,6 +86,87 @@ DEMO_SAMPLE_NOTES: dict[str, str] = {
 DEMO_REASONING_MODEL_NAME = "deterministic-demo-reasoning"
 
 
+@dataclass(frozen=True)
+class DemoPatientIdentity:
+    """One fixed, deterministic patient_identity_vault row for the demo profile."""
+
+    patient_id: str
+    medical_record_number: str
+    first_name: str
+    last_name: str
+    date_of_birth: str
+
+
+# A small, fixed set of patient identities for the demo profile's physician
+# submission UI to select from, in place of the random uuid4() patients
+# scripts/e2e_common.py::_seed_patient_identity mints per e2e run. Those
+# random ids make every demo run non-reproducible and give the frontend
+# nothing stable to reference (see GET /api/v1/demo/patients in
+# aegis.api.routers.demo). patient_id values are literal constants, never
+# generated at runtime, so a demo run today references the exact same rows
+# as a demo run next week.
+DEMO_PATIENT_IDENTITIES: tuple[DemoPatientIdentity, ...] = (
+    DemoPatientIdentity(
+        patient_id="11111111-1111-4111-8111-111111111111",
+        medical_record_number="MRN-DEMO-001",
+        first_name="Jordan",
+        last_name="Ellis",
+        date_of_birth="1985-03-14",
+    ),
+    DemoPatientIdentity(
+        patient_id="22222222-2222-4222-8222-222222222222",
+        medical_record_number="MRN-DEMO-002",
+        first_name="Priya",
+        last_name="Nair",
+        date_of_birth="1972-11-02",
+    ),
+    DemoPatientIdentity(
+        patient_id="33333333-3333-4333-8333-333333333333",
+        medical_record_number="MRN-DEMO-003",
+        first_name="Miguel",
+        last_name="Santos",
+        date_of_birth="1990-07-21",
+    ),
+)
+
+
+def seed_demo_patient_identities(connection: sqlite3.Connection, settings: AppSettings) -> None:
+    """
+    Idempotently seed ``DEMO_PATIENT_IDENTITIES`` into ``patient_identity_vault``
+    when ``settings.AEGIS_PROFILE == "demo"``; a no-op in every other profile.
+
+    ``INSERT OR IGNORE`` against ``patient_id`` (the table's primary key)
+    makes this safe to call on every startup -- exactly the same idempotency
+    guarantee every numbered migration already relies on -- so re-running the
+    demo profile never produces duplicate rows or requires a teardown step.
+    Production and integration profiles are completely unaffected: this
+    never runs outside "demo", and never touches any row this doesn't own.
+    """
+    if settings.AEGIS_PROFILE != "demo":
+        return
+
+    for identity in DEMO_PATIENT_IDENTITIES:
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO patient_identity_vault (
+                patient_id,
+                medical_record_number,
+                first_name,
+                last_name,
+                date_of_birth
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                identity.patient_id,
+                identity.medical_record_number,
+                identity.first_name,
+                identity.last_name,
+                identity.date_of_birth,
+            ),
+        )
+    connection.commit()
+
+
 class EmbeddingCompatibilityError(RuntimeError):
     """
     Raised when the configured ``EmbeddingProvider`` and
@@ -330,13 +411,16 @@ def build_infrastructure(settings: AppSettings, connection: sqlite3.Connection) 
     constructed identically regardless of ``settings.AEGIS_PROFILE`` --
     every profile runs the same real semantic retrieval pipeline against
     the same real Upstash Vector index. Only ``build_cache_repository``,
-    ``build_reasoning_provider``, and ``build_content_repository`` branch
-    on profile, each in exactly one place.
+    ``build_reasoning_provider``, ``build_content_repository``, and
+    ``seed_demo_patient_identities`` branch on profile, each in exactly
+    one place.
 
     Raises ``EmbeddingCompatibilityError`` immediately -- before
     ``build_container`` is ever called -- if the configured embedding
     provider and vector index disagree on vector shape.
     """
+    seed_demo_patient_identities(connection, settings)
+
     embedding_config = EmbeddingConfiguration.from_settings(settings)
     embedding_provider = build_embedding_provider(embedding_config, settings)
     vector_query_provider = build_vector_query_provider(settings)

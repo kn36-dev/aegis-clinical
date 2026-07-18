@@ -145,3 +145,9 @@ semantic vector index
 Each stage can therefore be independently validated, migrated, and reproduced.
 
 Future production deployments would extend this approach with representation versioning, embedding metadata tracking, and automated retrieval regression evaluation to detect semantic drift before deployment.
+
+---
+
+## Demo Profile Deterministic Patient Identity
+
+The interactive demo profile intentionally introduces a small set of deterministic patient identities to enable reproducible clinical note submission workflows. In production environments, patient identities would originate from existing enterprise identity systems, registration workflows, or external electronic health record integrations; this repository does not attempt to implement those operational boundaries. The demo profile therefore seeds fixed patient identity records directly into the existing `patient_identity_vault` table using idempotent bootstrap logic, allowing reviewers to execute the complete ingestion, retrieval, reasoning, and human-review workflow without manually querying database state or depending on randomly generated identifiers. This approach preserves the production data ownership model while acknowledging that deterministic demonstration fixtures are a separate operational concern from real patient identity lifecycle management.

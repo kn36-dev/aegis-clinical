@@ -3,11 +3,17 @@ export function ReviewQueuePage() {
     <section>
       <h1>Review Queue</h1>
       <p>
-        Placeholder for the physician review queue. The backend does not yet expose a
-        listing endpoint for pending reviews — the only implemented review route,{" "}
-        <code>GET /api/v1/reviews/{"{thread_id}"}</code>, fetches a single workflow's
-        state by id. This page is not wired to real data until that listing endpoint
-        exists.
+        Inspecting a single case&apos;s review state and submitting a physician decision are both
+        fully implemented — see <code>/reviews/{"{workflow_id}"}</code>, reachable from a clinical
+        submission&apos;s result.
+      </p>
+      <p>
+        Listing every case awaiting review is intentionally not implemented here. Enumerating
+        pending reviews across workflows is a backend capability — it needs its own
+        authorization-aware, persistence-backed listing/monitoring contract (see{" "}
+        <code>GET /api/v1/workflows/{"{workflow_id}"}</code> in{" "}
+        <code>api_contract_plan.md</code>, not yet built) — not something this page can
+        substitute for with client-only state.
       </p>
     </section>
   );
