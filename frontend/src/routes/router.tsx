@@ -3,6 +3,7 @@ import { AppLayout } from "../components/AppLayout";
 import { ClinicalSubmissionPage } from "../features/clinical-submission/ClinicalSubmissionPage";
 import { DecisionDetailPage } from "../features/decision-detail/DecisionDetailPage";
 import { ReviewQueuePage } from "../features/review-queue/ReviewQueuePage";
+import { NotFoundPage } from "./NotFoundPage";
 
 export const router = createBrowserRouter([
   {
@@ -13,6 +14,7 @@ export const router = createBrowserRouter([
       { path: "submit", element: <ClinicalSubmissionPage /> },
       { path: "reviews", element: <ReviewQueuePage /> },
       { path: "reviews/:threadId", element: <DecisionDetailPage /> },
+      { path: "*", element: <NotFoundPage /> },
     ],
   },
 ]);

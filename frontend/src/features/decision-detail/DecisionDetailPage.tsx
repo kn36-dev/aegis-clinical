@@ -73,7 +73,7 @@ export function DecisionDetailPage() {
   if (!workflowId) {
     return (
       <section className="review-page">
-        <p className="review-page__error">
+        <p className="review-page__error" role="alert">
           No workflow id was provided in the URL.
         </p>
       </section>
@@ -83,7 +83,9 @@ export function DecisionDetailPage() {
   if (state.kind === "loading") {
     return (
       <section className="review-page">
-        <p>Loading review…</p>
+        <p role="status" aria-live="polite">
+          Loading review…
+        </p>
       </section>
     );
   }
@@ -91,7 +93,9 @@ export function DecisionDetailPage() {
   if (state.kind === "error") {
     return (
       <section className="review-page">
-        <p className="review-page__error">{state.message}</p>
+        <p className="review-page__error" role="alert">
+          {state.message}
+        </p>
       </section>
     );
   }
@@ -164,10 +168,10 @@ export function DecisionDetailPage() {
         selection={
           isPendingReview
             ? {
-                selectedIcdCodes,
-                onToggle: handleToggle,
-                disabled: submitState.kind === "submitting",
-              }
+              selectedIcdCodes,
+              onToggle: handleToggle,
+              disabled: submitState.kind === "submitting",
+            }
             : undefined
         }
       />
@@ -177,7 +181,9 @@ export function DecisionDetailPage() {
             {submitState.kind === "submitting" ? "Submitting…" : "Submit decision"}
           </button>
           {submitState.kind === "error" && (
-            <p className="review-page__error">{submitState.message}</p>
+            <p className="review-page__error" role="alert">
+              {submitState.message}
+            </p>
           )}
         </div>
       )}

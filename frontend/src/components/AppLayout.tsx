@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 const NAV_ITEMS = [
   { to: "/submit", label: "Clinical Submission" },
@@ -10,7 +11,7 @@ export function AppLayout() {
     <div className="app-shell">
       <header className="app-shell__header">
         <span className="app-shell__title">AEGIS Clinical</span>
-        <nav className="app-shell__nav">
+        <nav className="app-shell__nav" aria-label="Main navigation">
           {NAV_ITEMS.map((item) => (
             <NavLink key={item.to} to={item.to} className="app-shell__nav-link">
               {item.label}
@@ -19,7 +20,9 @@ export function AppLayout() {
         </nav>
       </header>
       <main className="app-shell__content">
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>
   );

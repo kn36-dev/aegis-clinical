@@ -309,3 +309,11 @@ code {
   cursor: not-allowed;
   opacity: 0.6;
 }
+
+.not-found-page,
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 860px;
+}
