@@ -6,7 +6,7 @@ export function NotFoundPage() {
     <section className="not-found-page">
       <h1>Page not found</h1>
       <p>The page you're looking for doesn't exist.</p>
-      <Link to="/submit">Return to Clinical Submission</Link>
+      <Link to="/dashboard">Return to Dashboard</Link>
     </section>
   );
 }

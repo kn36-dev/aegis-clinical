@@ -2,6 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { ErrorBoundary } from "./ErrorBoundary";
 
 const NAV_ITEMS = [
+  { to: "/dashboard", label: "Dashboard" },
   { to: "/submit", label: "Clinical Submission" },
   { to: "/reviews", label: "Review Queue" },
 ];

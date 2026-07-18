@@ -317,3 +317,96 @@ code {
   gap: 12px;
   max-width: 860px;
 }
+
+.dashboard-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 860px;
+}
+
+.dashboard-page__actions {
+  display: flex;
+  gap: 20px;
+}
+
+.clinical-submission-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 860px;
+}
+
+.clinical-submission-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.clinical-submission-form__field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.clinical-submission-form__field span {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.clinical-submission-form__field input,
+.clinical-submission-form__field textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-h);
+  resize: vertical;
+}
+
+.clinical-submission-form button {
+  align-self: flex-start;
+  padding: 8px 20px;
+  border-radius: 6px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.clinical-submission-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.clinical-submission-page__error {
+  color: #c0392b;
+}
+
+.clinical-submission-result {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.clinical-submission-result__meta {
+  display: flex;
+  gap: 32px;
+  margin: 0;
+}
+
+.clinical-submission-result__meta dt {
+  font-size: 13px;
+  color: var(--text);
+  margin: 0 0 4px;
+}
+
+.clinical-submission-result__meta dd {
+  margin: 0;
+}

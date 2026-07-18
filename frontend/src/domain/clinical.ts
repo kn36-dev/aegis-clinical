@@ -1,6 +1,6 @@
 /**
  * Mirrors aegis.api.schemas.clinical — the DTOs for
- * POST /api/v1/clinical-notes.
+ * POST /api/v1/clinical-notes[/ingest].
  */
 import type { ICDCode, UUID } from "./common";
 
@@ -9,6 +9,12 @@ export type WorkflowStatus = "pending_review" | "completed";
 export interface ClinicalNoteIngestionRequest {
   patient_id: UUID;
   content_reference: string;
+}
+
+/** Mirrors aegis.api.schemas.clinical.ClinicalNoteIngestionWithContentRequest. */
+export interface ClinicalNoteIngestionWithContentRequest {
+  patient_id: UUID;
+  note_text: string;
 }
 
 export interface ApprovedICDCodeResponse {
