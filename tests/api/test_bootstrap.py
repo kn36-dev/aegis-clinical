@@ -35,6 +35,7 @@ if TYPE_CHECKING:
 class _SettingsStub:
     def __init__(self, **overrides: object) -> None:
         self.OPENAI_API_KEY = None
+        self.AEGIS_PROFILE = "demo"
         self.__dict__.update(overrides)
 
 
