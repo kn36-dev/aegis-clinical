@@ -108,3 +108,40 @@ The demo profile (`AEGIS_PROFILE=demo`, `aegis.api.bootstrap.build_content_repos
 ## Explicit Workflow Checkpoint Serialization Registration
 
 The workflow explicitly registers domain objects that cross the LangGraph checkpoint serialization boundary to ensure deterministic interrupt and resume behavior. Because checkpoints persist intermediate workflow state, objects contained within `AegisWorkflowState` are intentionally allow-listed rather than relying on implicit deserialization behavior. This registration includes only workflow state models required for execution continuity, such as clinical submissions, normalized notes, retrieval results, reasoning context, coding recommendations, physician decisions, and persisted clinical decisions, while intentionally excluding runtime infrastructure such as repositories, services, LLM providers, and external clients. This approach makes the persistence boundary explicit, improves compatibility with stricter serialization validation modes, and preserves a clean separation between durable workflow state and transient application dependencies. Future checkpoint backend changes can therefore evolve independently without coupling persisted state to infrastructure implementation details.
+
+---
+
+## Vector Representation Consistency and Re-indexing Lessons
+
+The semantic vector index is treated as a derived artifact rather than a source of truth. During development validation, the system identified a representation drift issue between the ICD taxonomy ingestion path and the vector indexing path. The taxonomy database stored hierarchical paths using one separator format, while the representation builder expected another format, resulting in incomplete hierarchy information being included in some embedding inputs.
+
+The issue did not originate from the embedding model or vector database. The underlying retrieval infrastructure, embedding provider, and vector store behaved deterministically according to their inputs; however, the quality of those inputs was affected by a mismatch between the canonical taxonomy representation and the generated embedding representation.
+
+The resolution reinforced several architectural principles:
+
+- The relational ICD taxonomy database remains the authoritative source of truth.
+- Vector indexes are disposable materialized views that can be safely rebuilt.
+- Representation generation must be deterministic and regression tested independently from retrieval.
+- Embedding quality depends on the stability and correctness of the text representation provided to the model.
+- Offline indexing pipelines require explicit checkpoint lifecycle management when semantic representations change.
+
+The corrected representation pipeline was migrated using the existing upsert-based indexing workflow rather than a destructive delete-and-recreate operation. Existing ICD concept identifiers were preserved, allowing corrected embeddings and metadata to replace previous representations while maintaining index continuity.
+
+This experience validates the architectural decision to separate:
+
+```text
+taxonomy source
+        |
+        v
+deterministic representation builder
+        |
+        v
+embedding generation
+        |
+        v
+semantic vector index
+```
+
+Each stage can therefore be independently validated, migrated, and reproduced.
+
+Future production deployments would extend this approach with representation versioning, embedding metadata tracking, and automated retrieval regression evaluation to detect semantic drift before deployment.
