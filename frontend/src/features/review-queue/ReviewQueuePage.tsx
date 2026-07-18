@@ -1,6 +1,6 @@
 export function ReviewQueuePage() {
   return (
-    <section>
+    <section className="review-queue-page">
       <h1>Review Queue</h1>
       <p>
         Inspecting a single case&apos;s review state and submitting a physician decision are both

@@ -6,8 +6,9 @@ interface ReviewStatusBannerProps {
 
 /**
  * Always-visible disclaimer that the AI output below is a suggestion, not a
- * committed clinical decision. Physician decision submission is a later slice
- * ("Non-Goals"), so this banner intentionally has no action — only messaging.
+ * committed clinical decision. Decision submission itself lives in
+ * DecisionDetailPage (the submit button below this banner) — this component
+ * only renders messaging, never an action.
  */
 export function ReviewStatusBanner({ status }: ReviewStatusBannerProps) {
   if (status === "completed") {

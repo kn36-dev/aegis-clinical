@@ -35,11 +35,20 @@ export function ClinicalSubmissionPage() {
   const [patientId, setPatientId] = useState("");
   const [noteText, setNoteText] = useState("");
   const [submitState, setSubmitState] = useState<SubmitState>({ kind: "idle" });
+  const [demoPatientsAvailable, setDemoPatientsAvailable] = useState(false);
+  const [manualEntryOpen, setManualEntryOpen] = useState(false);
 
   const isSubmitting = submitState.kind === "submitting";
+  const showManualField = !demoPatientsAvailable || manualEntryOpen;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (!patientId.trim()) {
+      setSubmitState({ kind: "error", message: "Select or enter a patient id." });
+      return;
+    }
+
     setSubmitState({ kind: "submitting" });
 
     try {
@@ -65,18 +74,33 @@ export function ClinicalSubmissionPage() {
       </p>
 
       <form className="clinical-submission-form" onSubmit={handleSubmit}>
-        <PatientSelector value={patientId} onChange={setPatientId} disabled={isSubmitting} />
-        <label className="clinical-submission-form__field">
-          <span>Patient ID</span>
-          <input
-            type="text"
-            value={patientId}
-            onChange={(event) => setPatientId(event.target.value)}
-            placeholder="e.g. 3fa85f64-5717-4562-b3fc-2c963f66afa6"
-            required
+        <PatientSelector
+          value={patientId}
+          onChange={setPatientId}
+          disabled={isSubmitting}
+          onAvailabilityChange={setDemoPatientsAvailable}
+        />
+        {showManualField ? (
+          <label className="clinical-submission-form__field">
+            <span>Patient ID</span>
+            <input
+              type="text"
+              value={patientId}
+              onChange={(event) => setPatientId(event.target.value)}
+              placeholder="e.g. 3fa85f64-5717-4562-b3fc-2c963f66afa6"
+              disabled={isSubmitting}
+            />
+          </label>
+        ) : (
+          <button
+            type="button"
+            className="clinical-submission-form__manual-toggle"
+            onClick={() => setManualEntryOpen(true)}
             disabled={isSubmitting}
-          />
-        </label>
+          >
+            Enter Patient ID manually instead
+          </button>
+        )}
         <label className="clinical-submission-form__field">
           <span>Clinical note text</span>
           <textarea

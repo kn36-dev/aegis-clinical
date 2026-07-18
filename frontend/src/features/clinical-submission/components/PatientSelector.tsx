@@ -6,6 +6,13 @@ interface PatientSelectorProps {
   value: string;
   onChange: (patientId: string) => void;
   disabled?: boolean;
+  /**
+   * Reports whether a non-empty demo patient list resolved, so the parent
+   * form can decide whether the raw Patient ID field is the primary input
+   * (no demo list) or a manual-entry fallback (demo list present) instead
+   * of always showing both at once.
+   */
+  onAvailabilityChange?: (available: boolean) => void;
 }
 
 type LoadState =
@@ -14,7 +21,7 @@ type LoadState =
   | { kind: "available"; patients: DemoPatientResponse[] };
 
 /**
- * Optional convenience over the Patient ID field below it: fetches
+ * Optional convenience over the Patient ID field: fetches
  * GET /api/v1/demo/patients and, only when that returns a non-empty list
  * (i.e. AEGIS_PROFILE == "demo"), offers a dropdown of those fixed,
  * deterministic identities. Renders nothing in every other case — a
@@ -24,7 +31,7 @@ type LoadState =
  * patient id itself; it only ever reports one the backend already knows
  * about.
  */
-export function PatientSelector({ value, onChange, disabled }: PatientSelectorProps) {
+export function PatientSelector({ value, onChange, disabled, onAvailabilityChange }: PatientSelectorProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   useEffect(() => {
@@ -35,17 +42,21 @@ export function PatientSelector({ value, onChange, disabled }: PatientSelectorPr
         if (cancelled) {
           return;
         }
-        setState(patients.length > 0 ? { kind: "available", patients } : { kind: "unavailable" });
+        const available = patients.length > 0;
+        setState(available ? { kind: "available", patients } : { kind: "unavailable" });
+        onAvailabilityChange?.(available);
       })
       .catch(() => {
         if (!cancelled) {
           setState({ kind: "unavailable" });
+          onAvailabilityChange?.(false);
         }
       });
 
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (state.kind !== "available") {
