@@ -22,7 +22,7 @@ from uuid import uuid4
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from aegis.api.dependencies import get_graph
+from aegis.api.dependencies import get_container, get_graph
 from aegis.api.routers import clinical
 from aegis.models.clinical_decision import (
     ApprovedICDClassification,
@@ -52,10 +52,56 @@ class FakeCompiledGraph:
         return self._result
 
 
-def make_app(fake_graph: FakeCompiledGraph) -> FastAPI:
+class FakeClinicalNoteService:
+    """
+    Records ``create_clinical_note`` calls
+    -- stands in for ``AegisContainer.clinical_note_service``.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def create_clinical_note(self, submission: Any, case_id: Any = None) -> None:
+        self.calls.append({"submission": submission, "case_id": case_id})
+
+
+class FakeIngestContentRepository:
+    """Records ``save_content`` calls -- stands in for ``AegisContainer.content_repository``."""
+
+    def __init__(self) -> None:
+        self.saved: list[dict[str, Any]] = []
+
+    def get_content(self, content_reference: str) -> str:
+        raise NotImplementedError("ingest_clinical_note never reads content back")
+
+    def save_content(self, case_id: Any, content_reference: str, content_payload: str) -> None:
+        self.saved.append(
+            {
+                "case_id": case_id,
+                "content_reference": content_reference,
+                "content_payload": content_payload,
+            }
+        )
+
+
+class FakeContainer:
+    """Minimal stand-in for ``AegisContainer`` -- only the two fields the ingest route touches."""
+
+    def __init__(
+        self,
+        clinical_note_service: FakeClinicalNoteService,
+        content_repository: FakeIngestContentRepository,
+    ) -> None:
+        self.clinical_note_service = clinical_note_service
+        self.content_repository = content_repository
+
+
+def make_app(fake_graph: FakeCompiledGraph, container: Any = None) -> FastAPI:
     app = FastAPI()
     app.include_router(clinical.router, prefix="/api/v1")
     app.dependency_overrides[get_graph] = lambda: fake_graph
+    if container is not None:
+        app.dependency_overrides[get_container] = lambda: container
     return app
 
 
@@ -63,6 +109,13 @@ def make_payload() -> dict[str, Any]:
     return {
         "patient_id": str(uuid4()),
         "content_reference": "content-store://clinical-notes/abc123",
+    }
+
+
+def make_ingest_payload() -> dict[str, Any]:
+    return {
+        "patient_id": str(uuid4()),
+        "note_text": "Patient reports no fever. Mild cough.",
     }
 
 
@@ -160,4 +213,70 @@ def test_invalid_submission_is_rejected_before_reaching_graph() -> None:
     response = client.post("/api/v1/clinical-notes", json={"patient_id": str(uuid4())})
 
     assert response.status_code == 422
+    assert fake_graph.calls == []
+
+
+def test_ingest_persists_clinical_note_then_seeds_content_then_invokes_graph() -> None:
+    """
+    The three collaborators must run in this exact order: the patient_case
+    row (via clinical_note_service) has to exist before content_repository
+    can store content against it (clinical_note_content's FK), and both
+    must happen before the graph runs.
+    """
+    decision = ClinicalDecision(
+        decision_id=uuid4(),
+        case_id=uuid4(),
+        patient_id_reference=uuid4(),
+        approved_icd_codes=[
+            ApprovedICDClassification(
+                icd_code="1A00", disposition=RecommendationDisposition.ACCEPTED
+            )
+        ],
+        normalization_version="1.0",
+        created_at=FIXED_TIME,
+    )
+    fake_graph = FakeCompiledGraph(result={"clinical_decision": decision})
+    note_service = FakeClinicalNoteService()
+    content_repository = FakeIngestContentRepository()
+    container = FakeContainer(note_service, content_repository)
+    client = TestClient(make_app(fake_graph, container=container))
+    payload = make_ingest_payload()
+
+    response = client.post("/api/v1/clinical-notes/ingest", json=payload)
+
+    assert response.status_code == 201
+
+    assert len(note_service.calls) == 1
+    minted_submission = note_service.calls[0]["submission"]
+    minted_case_id = note_service.calls[0]["case_id"]
+    assert str(minted_submission.patient_id) == payload["patient_id"]
+    assert minted_case_id is not None
+
+    assert len(content_repository.saved) == 1
+    seeded = content_repository.saved[0]
+    assert seeded["case_id"] == minted_case_id
+    assert seeded["content_payload"] == payload["note_text"]
+    assert seeded["content_reference"] == minted_submission.content_reference
+
+    assert len(fake_graph.calls) == 1
+    invoked_state = fake_graph.calls[0]["state"]
+    assert invoked_state["case_id"] == minted_case_id
+    assert invoked_state["submission"].content_reference == minted_submission.content_reference
+
+
+def test_ingest_rejects_blank_note_text_before_touching_anything() -> None:
+    fake_graph = FakeCompiledGraph(result={"clinical_decision": None})
+    note_service = FakeClinicalNoteService()
+    content_repository = FakeIngestContentRepository()
+    container = FakeContainer(note_service, content_repository)
+    client = TestClient(make_app(fake_graph, container=container))
+
+    response = client.post(
+        "/api/v1/clinical-notes/ingest",
+        json={"patient_id": str(uuid4()), "note_text": ""},
+    )
+
+    assert response.status_code == 422
+    assert note_service.calls == []
+    assert content_repository.saved == []
     assert fake_graph.calls == []

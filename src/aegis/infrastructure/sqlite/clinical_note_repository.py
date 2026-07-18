@@ -47,6 +47,35 @@ class SQLiteClinicalNoteRepository:
         self._conn = connection
 
     def save(self, clinical_note: ClinicalNote) -> None:
+        """
+        Persist ``clinical_note``, idempotently.
+
+        Re-saving the same ``case_id`` with an unchanged ``patient_id`` and
+        ``content_reference`` is a no-op rather than a constraint violation.
+        This is what makes ``POST /clinical-notes/ingest`` retry-safe: it
+        calls ``ClinicalNoteService.create_clinical_note`` directly to
+        establish this row (so ``clinical_note_content`` has something to
+        foreign-key against) before seeding content, and then the graph's
+        own ``create_clinical_note`` node persists the identical artifact
+        again moments later. ``created_at`` is deliberately excluded from
+        the comparison -- each call to ``create_clinical_note`` stamps its
+        own timestamp, so two persist attempts for the same submission
+        never share one. A ``case_id`` reused with a *different*
+        ``patient_id`` or ``content_reference`` still raises -- that is a
+        genuine identity conflict, not a retry.
+        """
+        existing = self.get_by_case_id(clinical_note.case_id)
+        if existing is not None:
+            if (
+                existing.patient_id == clinical_note.patient_id
+                and existing.content_reference == clinical_note.content_reference
+            ):
+                return
+            raise ValueError(
+                f"case_id {clinical_note.case_id} is already persisted with a different "
+                "patient_id or content_reference"
+            )
+
         cursor = self._conn.cursor()
         try:
             cursor.execute(

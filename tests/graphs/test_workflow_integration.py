@@ -21,7 +21,6 @@ from uuid import UUID, uuid4
 import aiosqlite
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.types import Command
 
@@ -57,6 +56,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from langchain_core.runnables import RunnableConfig
+    from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 
     from aegis.models.reasoning_context import ReasoningContext
 

@@ -113,3 +113,43 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  text-align: left;
+}
+
+.app-shell__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 32px;
+  border-bottom: 1px solid var(--border);
+}
+
+.app-shell__title {
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.app-shell__nav {
+  display: flex;
+  gap: 20px;
+}
+
+.app-shell__nav-link {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.app-shell__nav-link.active {
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.app-shell__content {
+  flex: 1;
+  padding: 32px;
+}

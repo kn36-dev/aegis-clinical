@@ -26,6 +26,8 @@ from aegis.models.normalized_clinical_note import NormalizedClinicalNote
 from aegis.services.clinical_note_service import SystemClock
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from aegis.models.clinical_note import ClinicalNote
     from aegis.phi.base import PHIAnonymizer
     from aegis.services.clinical_note_service import Clock
@@ -35,15 +37,21 @@ NORMALIZATION_VERSION = "1.0"
 
 class ClinicalNoteContentRepository(Protocol):
     """
-    Retrieval boundary for the original clinical narrative referenced by
-    ``ClinicalNote.content_reference``.
+    Retrieval/storage boundary for the original clinical narrative
+    referenced by ``ClinicalNote.content_reference``.
 
-    ``NormalizationService`` depends on this abstraction rather than on
-    any storage technology, so the storage mechanism (SQLite, encrypted
-    blob store, ...) can change without affecting the service.
+    ``NormalizationService`` depends only on ``get_content`` here, so the
+    storage mechanism (SQLite, encrypted blob store, ...) can change
+    without affecting the service. ``save_content`` is an ingress-side
+    capability of the same abstraction -- used by
+    ``aegis.api.routers.clinical.ingest_clinical_note`` to seed raw note
+    content ahead of the workflow, never by ``NormalizationService``
+    itself.
     """
 
     def get_content(self, content_reference: str) -> str: ...
+
+    def save_content(self, case_id: UUID, content_reference: str, content_payload: str) -> None: ...
 
 
 class NormalizationRuleSet(Protocol):

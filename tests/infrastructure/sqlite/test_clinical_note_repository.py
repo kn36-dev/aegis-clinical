@@ -82,15 +82,45 @@ def test_save_rejects_unknown_patient_with_clear_failure(
     assert repository.get_by_case_id(clinical_note.case_id) is None
 
 
-def test_save_rejects_duplicate_case_id(clinical_db_connection: sqlite3.Connection) -> None:
+def test_save_is_idempotent_for_identical_resubmission(
+    clinical_db_connection: sqlite3.Connection,
+) -> None:
+    """
+    Re-saving the same case_id with unchanged patient_id/content_reference
+    must be a no-op -- this is what makes POST /clinical-notes/ingest
+    retry-safe against the graph's own create_clinical_note node
+    re-persisting the identical artifact moments later.
+    """
     patient_id = uuid4()
     _seed_patient_identity(clinical_db_connection, patient_id)
     clinical_note = _build_clinical_note(patient_id)
     repository = SQLiteClinicalNoteRepository(clinical_db_connection)
     repository.save(clinical_note)
 
-    with pytest.raises(sqlite3.IntegrityError):
-        repository.save(clinical_note)
+    repository.save(clinical_note)
+
+    assert repository.get_by_case_id(clinical_note.case_id) == clinical_note
+
+
+def test_save_rejects_conflicting_resubmission_for_same_case_id(
+    clinical_db_connection: sqlite3.Connection,
+) -> None:
+    """A case_id reused with a different content_reference is a genuine identity conflict."""
+    patient_id = uuid4()
+    _seed_patient_identity(clinical_db_connection, patient_id)
+    clinical_note = _build_clinical_note(patient_id)
+    repository = SQLiteClinicalNoteRepository(clinical_db_connection)
+    repository.save(clinical_note)
+
+    conflicting_note = ClinicalNote(
+        case_id=clinical_note.case_id,
+        patient_id=patient_id,
+        content_reference="content-store://clinical-notes/different",
+        created_at=clinical_note.created_at,
+    )
+
+    with pytest.raises(ValueError, match="already persisted"):
+        repository.save(conflicting_note)
 
 
 def test_round_trip_result_is_a_domain_model_not_a_raw_row(

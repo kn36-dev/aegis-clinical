@@ -24,6 +24,11 @@ associated with a reference, but no caller knows ``case_id`` before
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from uuid import UUID
+
 
 class FakeContentRepository:
     """In-memory stand-in for ``ClinicalNoteContentRepository``."""
@@ -33,3 +38,14 @@ class FakeContentRepository:
 
     def get_content(self, content_reference: str) -> str:
         return self._content.get(content_reference, "Patient reports no fever. Mild cough.")
+
+    def save_content(self, case_id: UUID, content_reference: str, content_payload: str) -> None:
+        """
+        Seed content for ``content_reference``, ignoring ``case_id``.
+
+        The in-memory mapping has no case-identity dependency (see this
+        module's docstring), unlike ``SQLiteContentStore`` -- this exists so
+        ``POST /clinical-notes/ingest`` works identically against the
+        demo/integration profile's fake as it does against the real adapter.
+        """
+        self._content[content_reference] = content_payload

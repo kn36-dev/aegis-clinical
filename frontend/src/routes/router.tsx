@@ -1,0 +1,18 @@
+import { createBrowserRouter, Navigate } from "react-router-dom";
+import { AppLayout } from "../components/AppLayout";
+import { ClinicalSubmissionPage } from "../features/clinical-submission/ClinicalSubmissionPage";
+import { DecisionDetailPage } from "../features/decision-detail/DecisionDetailPage";
+import { ReviewQueuePage } from "../features/review-queue/ReviewQueuePage";
+
+export const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <AppLayout />,
+    children: [
+      { index: true, element: <Navigate to="/submit" replace /> },
+      { path: "submit", element: <ClinicalSubmissionPage /> },
+      { path: "reviews", element: <ReviewQueuePage /> },
+      { path: "reviews/:threadId", element: <DecisionDetailPage /> },
+    ],
+  },
+]);

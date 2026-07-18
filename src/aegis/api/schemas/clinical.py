@@ -29,6 +29,25 @@ class ClinicalNoteIngestionRequest(BaseModel):
     content_reference: str = Field(min_length=1)
 
 
+class ClinicalNoteIngestionWithContentRequest(BaseModel):
+    """
+    External submission of *raw* clinical note content, for a caller with no
+    pre-existing ``content_reference``.
+
+    ``ClinicalNoteIngestionRequest`` above requires a caller to already hold
+    a reference into previously-stored content -- it never accepts note text
+    itself (see ``runtime_domain_contracts/clinical_note.md``: content_reference
+    is an opaque pointer, not inline text). This request is the ingestion
+    boundary that closes that gap: the router mints a fresh
+    ``content_reference``, stores ``note_text`` through the content
+    repository, and only then starts the workflow -- see
+    ``aegis.api.routers.clinical.ingest_clinical_note``.
+    """
+
+    patient_id: UUID
+    note_text: str = Field(min_length=1)
+
+
 class WorkflowStatus(str, Enum):
     """Terminal state of a single workflow invocation, as observed by the router."""
 

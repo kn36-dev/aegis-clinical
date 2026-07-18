@@ -20,6 +20,17 @@ class UpstashRedisAdapter:
             raise RuntimeError("Redis client is not configured")
         return self._client.get(key)
 
+    def delete(self, key: str) -> None:
+        """
+        Delete a specific Redis key.
+
+        Intended for infrastructure tooling. Application services
+        should not call this directly.
+        """
+        if self._client is None:
+            raise RuntimeError("Redis client is not configured")
+        self._client.delete(key)
+
 
 class UpstashVectorAdapter:
     """Thin adapter for vector database interactions."""

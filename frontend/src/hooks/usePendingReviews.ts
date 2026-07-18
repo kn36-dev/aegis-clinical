@@ -1,2 +1,0 @@
-// Core logic: establish a lightweight polling mechanism or native WebSocket connection for the backend API
-// Purpose: Real-time connection between the agent and the frontend to display state, network, toast
