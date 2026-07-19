@@ -140,6 +140,10 @@ make dev-backend         # uv run uvicorn aegis.api.main:app --app-dir src --rel
 # Run the API against the demo profile (no GROQ_API_KEY / Redis creds needed)
 make demo-server         # AEGIS_PROFILE=demo uv run uvicorn ... --port 9000
 
+# Run the API against the demo-local profile (zero credentials: local vector index
+# compiled from the seeded ICD taxonomy, no Upstash/Groq/OpenAI creds needed at all)
+make demo-local          # AEGIS_PROFILE=demo-local uv run uvicorn ... --port 9000
+
 # Frontend (React 19 + Vite, in frontend/, uses pnpm)
 make dev-frontend        # cd frontend && pnpm run dev   (dev server on :5173)
 
@@ -181,17 +185,18 @@ Three subsystems, mapped onto the deterministic/probabilistic boundary:
 External AI and retrieval dependencies are isolated behind capability-specific abstractions rather than a generic provider layer:
 
 - **Embedding providers** are behind `EmbeddingProvider` (`src/aegis/embeddings/`): `sentence_transformers.py` provides the default local implementation, while `openai.py` provides a swappable hosted alternative.
-- **Vector stores** are behind `VectorStore` (`src/aegis/vectorstores/`): `upstash.py` provides the production retrieval backend and `local.py` provides a credential-free implementation for testing and evaluation.
+- **Vector stores** are behind `VectorStore` (`src/aegis/vectorstores/`, write path) and `VectorQueryProvider` (`src/aegis/retrieval/providers/`, read path): `upstash.py` in each provides the production retrieval backend, and `local.py` in each provides a credential-free implementation — used by the evaluation harness's fixture index and, at runtime, by the `demo-local` profile's compiled local index (`aegis.indexing.local_compiler`).
 - **LLM reasoning access** is owned by the CrewAI infrastructure boundary (`src/aegis/infrastructure/crewai/reasoning_provider.py`). CrewAI manages model invocation through `crewai.LLM` and its LiteLLM integration; reasoning agents do not depend directly on model providers or infrastructure services.
 
 The configured default LLM is Groq (`llama-3.3-70b-versatile`). The reasoning model is configured through the CrewAI LLM boundary rather than being coupled to the application architecture, allowing model changes without affecting workflow, service, or domain contracts. The configured default embedding provider is SentenceTransformers `BAAI/bge-large-en-v1.5` (1024 dimensions). OpenAI `text-embedding-3-small` (1536 dimensions) remains available as a swappable embedding implementation through `EMBEDDING_*` configuration.
 
 ### Runtime profiles (`AEGIS_PROFILE`)
 
-`AppSettings.AEGIS_PROFILE` (`config.py`) is `"production" | "demo" | "integration"`, read by the composition root (`api/bootstrap.py`) to decide which collaborators to wire up for three boundaries — cache, reasoning, and content-repository — while embedding + Upstash Vector retrieval stay real in every profile:
+`AppSettings.AEGIS_PROFILE` (`config.py`) is `"production" | "demo" | "demo-local" | "integration"`, read by the composition root (`api/bootstrap.py`) to decide which collaborators to wire up for four boundaries — cache, reasoning, content-repository, and (`demo-local` only) vector retrieval. Embedding stays real in every profile; Upstash Vector retrieval stays real in every profile except `demo-local`. See ADR-0002 (`docs/adr/0002-runtime-profile-architecture.md`) for the full rationale and ADR-0003 for `demo-local` specifically:
 
-- **`production`** (default): real Redis-backed cache, real CrewAI/Groq reasoning. Requires `GROQ_API_KEY` and the Upstash Redis pair.
-- **`demo`**: those three collaborators are replaced with deterministic in-memory fakes (`infrastructure/memory/`), so no `GROQ_API_KEY` or Redis credentials are needed — only Upstash Vector + embedding credentials. Built for the `docs/demo.md` walkthrough.
+- **`production`** (default): real Redis-backed cache, real CrewAI/Groq reasoning, real Upstash Vector retrieval. Requires `GROQ_API_KEY` and the Upstash Redis pair (plus Upstash Vector + `EMBEDDING_*`, required in every profile below it).
+- **`demo`**: the cache/reasoning/content-repository collaborators are replaced with deterministic in-memory fakes (`infrastructure/memory/`), so no `GROQ_API_KEY` or Redis credentials are needed — only Upstash Vector + embedding credentials. Built for the `docs/demo.md` walkthrough.
+- **`demo-local`**: same in-memory fakes as `demo`, plus vector retrieval itself is replaced — `aegis.indexing.local_compiler` compiles the real seeded ICD-11 taxonomy into a local, file-backed vector index (cached under `.artifacts/local_vector_index/`) instead of querying Upstash Vector. Needs **no credentials at all**, not even a `.env` file — `EMBEDDING_PROVIDER`/`EMBEDDING_MODEL`/`EMBEDDING_DIMENSIONS` default to the same local model every other profile uses if left unset.
 - **`integration`**: same real collaborators as `production`, under a separate profile name so `scripts/integration_e2e.py` can verify external infrastructure wiring without overloading the `production` profile semantics.
 
 This is a config-driven dependency-injection switch, not a code fork — the graph, services, and API surface are identical across profiles; only what `bootstrap.py` injects changes. See `scripts/demo_e2e.py`, `scripts/integration_e2e.py`, `scripts/integration_cache_e2e.py`, and `scripts/e2e_common.py` for the scripted end-to-end runs that exercise each profile.

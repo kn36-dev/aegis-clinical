@@ -6,6 +6,18 @@
 
 Rather than relying on autonomous agent loops, the system combines explicit state-machine orchestration with bounded AI reasoning to ensure every clinical note follows a deterministic execution path from ingestion through physician approval. The repository emphasizes architectural correctness, clear data ownership, reproducible execution, and evaluation-driven development over infrastructure scale.
 
+> **The defining principle, enforced in code, not just in this document:**
+> Deterministic systems own workflow execution. Probabilistic systems (LLMs) contribute
+> bounded reasoning inside explicit guardrails. **The application governs the AI; the AI
+> never owns the application.** See [ADR-0001](docs/adr/0001-deterministic-orchestration-around-probabilistic-reasoning.md)
+> for the reasoning and the alternatives it rules out.
+
+Concretely, that principle is implemented as three subsystems with a hard boundary between them — see `docs/architecture.md` for the full depth, and the diagrams below for the two that matter most at runtime:
+
+1. **Offline knowledge compilation** (`indexing/`, `embeddings/`, `vectorstores/`, `jobs/`) — deterministic, reproducible, and run only when the ICD-11 taxonomy changes. Never shares a code path with runtime retrieval.
+2. **Deterministic runtime preparation** (`retrieval/`, early LangGraph nodes) — anonymize, normalize, hash, cache-lookup, embed, and semantically search; no LLM involved, and every step is unit-testable in isolation.
+3. **Bounded AI reasoning** (`agents/`, `schemas/`, `graphs/`) — a single CrewAI agent reasons over a fixed `ReasoningContext` and returns a schema-validated `CodingRecommendation` it cannot use to invent an ICD-11 code retrieval never surfaced.
+
 > **New here?** `docs/demo.md` is a guided, ~10-minute walkthrough of this exact repository — start there for a live-demo tour instead of reading top to bottom.
 
 ---
@@ -83,21 +95,30 @@ All AI-generated outputs pass through strongly typed **Pydantic** models before 
 
 # Storage Architecture
 
-The persistence layer follows a strict separation of responsibilities.
+The persistence layer follows a strict separation of responsibilities: **SQLite is the only
+authoritative store; everything else is a derived, disposable optimization layer that could
+be wiped and rebuilt from SQLite (and the ICD-11 source dataset) without losing clinical
+truth.** That asymmetry — not just "three data stores" — is the actual design:
+
+| Store          | Responsibility                                       | Authoritative |
+| -------------- | ------------------------------------------------------ | :-: |
+| SQLite         | Clinical registry + ICD-11 taxonomy (system of record) | **Yes** |
+| Upstash Vector | Semantic nearest-neighbor retrieval (ids only)          | No — derived |
+| Upstash Redis  | Deterministic SHA-256 exact-match cache                 | No — derived |
 
 ### SQLite — System of Record
 
-SQLite serves as the authoritative source of truth for all mutable application state, including clinical cases, physician-approved ICD-11 classifications, audit history, workflow checkpoints, optimistic versioning, and the complete ICD-11 taxonomy. Write-Ahead Logging (WAL) mode enables concurrent reads while preserving transactional consistency.
+SQLite serves as the authoritative source of truth for all mutable application state, including clinical cases, physician-approved ICD-11 classifications, audit history, workflow checkpoints, optimistic versioning, and the complete ICD-11 taxonomy. Write-Ahead Logging (WAL) mode enables concurrent reads while preserving transactional consistency. Every write to Redis or Upstash Vector is downstream of something SQLite already durably persisted — persistence always happens first (see "Clinical Processing Pipeline" below) — so neither derived store can ever hold clinical truth SQLite doesn't also have.
 
-### Upstash Vector — Semantic Retrieval
+### Upstash Vector — Semantic Retrieval (Derived)
 
 A single Upstash Vector index contains a read-only `taxonomy_lookup` namespace populated with precomputed embeddings of the official ICD-11 taxonomy. The current default embedding provider is **SentenceTransformers `BAAI/bge-large-en-v1.5` (1024-dimensional)**; because embedding providers sit behind a swappable interface (`src/aegis/embeddings/`), OpenAI's `text-embedding-3-small` (1536-dimensional) can be selected instead via `EMBEDDING_*` settings without changing retrieval logic.
 
-The vector database functions exclusively as a semantic nearest-neighbor index, returning ICD-11 identifiers during similarity search. Clinical descriptions, taxonomy metadata, and application state remain solely within SQLite, following a pointer-based architecture that avoids duplicated mutable data across storage systems.
+The vector database functions exclusively as a semantic nearest-neighbor index, returning ICD-11 identifiers during similarity search. Clinical descriptions, taxonomy metadata, and application state remain solely within SQLite, following a pointer-based architecture that avoids duplicated mutable data across storage systems. It is derived, not authoritative, precisely because it is an index *over* SQLite's taxonomy: the `demo-local` profile proves this in practice by replacing it with a locally compiled equivalent (see "Runtime Execution Profiles" below) without changing what gets persisted or how.
 
-### Upstash Redis — Deterministic Cache
+### Upstash Redis — Deterministic Cache (Derived)
 
-Redis provides an exact-match cache keyed by the SHA-256 hash of normalized clinical notes. Previously processed notes bypass semantic retrieval and AI reasoning entirely, returning physician-approved ICD-11 classifications with zero additional embedding generation or LLM inference cost. This deterministic cache improves efficiency over time while preserving SQLite as the authoritative data source.
+Redis provides an exact-match cache keyed by the SHA-256 hash of normalized clinical notes. Previously processed notes bypass semantic retrieval and AI reasoning entirely, returning physician-approved ICD-11 classifications with zero additional embedding generation or LLM inference cost. This deterministic cache improves efficiency over time while preserving SQLite as the authoritative data source — a cold or wiped Redis instance never loses a clinical decision, it only loses the shortcut to one already durably persisted in SQLite.
 
 ---
 
@@ -233,59 +254,31 @@ Every run writes reproducible, provenance-stamped reports (git commit, dataset h
 
 ---
 
-# Running the Demo (Real Retrieval, Minimal Credentials)
+# Runtime Execution Profiles
 
-> For a guided, narrated walkthrough of everything below (plus the frontend and the evaluation CLI), see `docs/demo.md`.
+> For a guided, narrated walkthrough of the `demo-local`/`demo` path (plus the frontend and the evaluation CLI), see `docs/demo.md`. For the architectural reasoning behind profiles as a mechanism, see [ADR-0002](docs/adr/0002-runtime-profile-architecture.md); for why `demo-local` specifically compiles a real local index rather than faking retrieval, see [ADR-0003](docs/adr/0003-local-demo-execution-strategy.md).
 
-A complete, reproducible run of the clinical pipeline — submission, AI-assisted recommendation, physician review, and persisted decision — is available as a single command:
+A single configuration value, `AEGIS_PROFILE`, selects **which infrastructure is real** for a
+given run — never which application code runs. The FastAPI app, routers, LangGraph workflow,
+and every application service are constructed identically in all four profiles; only the
+composition root (`aegis/api/bootstrap.py`) decides which concrete adapter backs the cache,
+the reasoning boundary, the content repository, and (for `demo-local` only) vector retrieval.
+The four profiles below are ordered deliberately, from **zero credentials** to **full
+deployment** — each one adds back exactly one more piece of real managed infrastructure than
+the last, so the progression itself demonstrates the dependency-inversion boundary rather than
+just asserting it:
 
-```bash
-make db-init && make db-seed-icd   # once, before the first run
-make demo
-# equivalent to: AEGIS_PROFILE=demo uv run python scripts/demo_e2e.py
-```
+| Profile | Vector retrieval | Cache | Reasoning | Credentials needed |
+| --- | --- | --- | --- | --- |
+| **`demo-local`** | Local, compiled index | In-memory | Deterministic | *none* |
+| **`demo`** | Real Upstash Vector | In-memory | Deterministic | Upstash Vector + embedding |
+| **`integration`** | Real Upstash Vector | Real Upstash Redis | Real CrewAI/Groq | all of the above + Groq + Redis |
+| **`production`** | Real Upstash Vector | Real Upstash Redis | Real CrewAI/Groq | same as integration |
 
-This drives the real FastAPI application (`aegis.api.main.app`) through its HTTP boundary using FastAPI's `TestClient` — the real lifespan, the real LangGraph workflow, and the real interrupt/resume suspension all run exactly as they would under `make dev-backend`, against the same composition root (`aegis/api/bootstrap.py`) and the same real, locally-seeded `data/clinical_registry.db` that `make demo-server` below uses. Under `AEGIS_PROFILE=demo`, embedding and Upstash Vector retrieval stay real (see "Running the Demo Server" below for why); only the cache, reasoning, and content-repository collaborators are deterministic in-memory substitutes. That means `make demo` needs `UPSTASH_VECTOR_REST_URL`/`UPSTASH_VECTOR_REST_TOKEN` and the `EMBEDDING_*` settings in `.env`, but not `GROQ_API_KEY` or Upstash Redis credentials. Because retrieval is real, the physician's decision in the script is read back from whatever the AI actually recommended, not a hardcoded ICD code.
+### 1. `demo-local` — zero credentials
 
-A second, credential-free scenario is expressed as an automated test in `tests/integration/test_clinical_pipeline.py` (fake embedding/retrieval too, ephemeral SQLite, no `.env` needed), including the cache-hit path on a repeat submission:
-
-```bash
-uv run pytest tests/integration/test_clinical_pipeline.py -v
-```
-
-`make integration` runs the identical script (`scripts/integration_e2e.py`, sharing its workflow logic with `scripts/demo_e2e.py` via `scripts/e2e_common.py`) under `AEGIS_PROFILE=integration` instead: real Redis-backed cache and real CrewAI/Groq reasoning replace demo's in-memory ones, so it also needs `GROQ_API_KEY` and the Upstash Redis credentials. Its purpose is verifying that the full external infrastructure wiring works, not exercising different application logic.
-
-See `docs/tradeoffs_and_limitations.md` — "Live-Credential Content Seeding Gap" — for why both `make demo` and `make integration` submit one of a fixed set of pre-seeded sample notes rather than arbitrary freshly-typed text.
-
----
-
-# Running the Demo Server (React Frontend, One Real Credential)
-
-The script above is a fully offline, zero-credential *reproduction* of the pipeline. There is a second, distinct way to run the demo: a real, long-lived FastAPI server the React frontend (`frontend/`) talks to over HTTP, which is what a live interview walkthrough actually uses.
-
-It is the exact same application — same FastAPI app, same routers, same LangGraph workflow, same application services — started with one configuration value changed:
-
-```bash
-AEGIS_PROFILE=demo make demo-server
-# equivalent to: AEGIS_PROFILE=demo uv run uvicorn aegis.api.main:app --app-dir src --reload --port 9000
-```
-
-`AEGIS_PROFILE=demo` changes only which collaborators `aegis/api/bootstrap.py` (the composition root) assembles:
-
-- **Real, unchanged:** SQLite persistence, the full ICD-11 taxonomy, PHI anonymization/normalization, the embedding provider, and Upstash Vector retrieval — this profile queries the actual ~15,000-vector BGE-large index the offline indexing pipeline built, so the retrieval results a reviewer sees are genuinely real.
-- **Deterministic substitutes:** the cache (in-memory instead of Upstash Redis), clinical reasoning (a deterministic adapter that recommends the top real retrieval candidate instead of calling Groq/CrewAI — see `DeterministicTopCandidateReasoningProvider`), and the content repository (in-memory, pre-seeded with a fixed set of sample notes, for the same reason described below).
-
-This means the server needs only `UPSTASH_VECTOR_REST_URL`/`UPSTASH_VECTOR_REST_TOKEN` and the `EMBEDDING_*` settings from `.env` — no `GROQ_API_KEY` or Upstash Redis credentials.
-
-Submissions in this profile must use one of the pre-seeded `content_reference` values in `aegis.api.bootstrap.DEMO_SAMPLE_NOTES` (the frontend is expected to offer these as selectable sample cases), not arbitrary freshly-typed text — see "Live-Credential Content Seeding Gap" below for why.
-
----
-
-# Running Demo-Local (Zero Credentials)
-
-`demo` above still needs Upstash Vector and `EMBEDDING_*` credentials — real semantic retrieval against a live external index is the point of that profile. `AEGIS_PROFILE=demo-local` is a third profile for the case where a reviewer wants to run the app with **no credentials of any kind**: not `GROQ_API_KEY`, not the Upstash Redis pair, not `UPSTASH_VECTOR_REST_URL`/`UPSTASH_VECTOR_REST_TOKEN`, not `OPENAI_API_KEY` — no `.env` file at all.
-
-It is, again, the exact same application, started with the same configuration value changed one step further:
+The entry point for a reviewer who has just cloned the repository and has no managed-service
+credentials at all:
 
 ```bash
 uv sync
@@ -294,11 +287,71 @@ make demo-local
 # equivalent to: AEGIS_PROFILE=demo-local uv run uvicorn aegis.api.main:app --app-dir src --reload --port 9000
 ```
 
-`AEGIS_PROFILE=demo-local` reuses the same in-memory cache, reasoning, and content-repository substitutes as `demo`, and additionally replaces retrieval itself: instead of querying a live Upstash Vector index, `aegis.indexing.local_compiler` compiles the real ~15,471-row ICD-11 taxonomy (the same rows `make db-seed-icd` seeds, not a toy fixture) through the same offline `IndexingPipeline`/`RepresentationBuilder` used to build the real index, embeds it locally with the same `SentenceTransformers` model (`BAAI/bge-large-en-v1.5`) the other profiles use by default, and serves queries from an in-memory `LocalVectorQueryProvider` running brute-force cosine similarity. Retrieval is therefore still real semantic search over the real taxonomy — never a hardcoded ICD code — just against a local index instead of Upstash's.
+`AEGIS_PROFILE=demo-local` uses the same in-memory cache, reasoning, and content-repository substitutes as `demo` below, and additionally replaces retrieval itself: instead of querying a live Upstash Vector index, `aegis.indexing.local_compiler` compiles the real ~15,471-row ICD-11 taxonomy (the same rows `make db-seed-icd` seeds, not a toy fixture) through the same offline `IndexingPipeline`/`RepresentationBuilder` used to build the real index, embeds it locally with the same `SentenceTransformers` model (`BAAI/bge-large-en-v1.5`) every other profile defaults to, and serves queries from an in-memory `LocalVectorQueryProvider` running brute-force cosine similarity. Retrieval is therefore still real semantic search over the real taxonomy — never a hardcoded ICD code — just against a local index instead of Upstash's.
 
-**First run compiles the local index; every run after that loads it from a cache.** Embedding ~15k rows on CPU is a one-time cost of several minutes; the compiled result is persisted as a generated artifact under `.artifacts/local_vector_index/` (already `.gitignore`d, never committed), fingerprinted by a manifest (taxonomy content hash, row count, embedding model, dimensions) so any change to the taxonomy or embedding configuration triggers a fresh compile rather than silently serving a stale index. `--reload` restarts and subsequent `make demo-local` invocations load that cached artifact in seconds.
+**First run compiles the local index; every run after that loads it from a cache.** Embedding ~15k rows on CPU is a one-time cost of a few minutes; the compiled result is persisted as a generated artifact under `.artifacts/local_vector_index/` (already `.gitignore`d, never committed), fingerprinted by a manifest (taxonomy content hash, row count, embedding model, dimensions) so any change to the taxonomy or embedding configuration triggers a fresh compile rather than silently serving a stale index. `--reload` restarts and subsequent `make demo-local` invocations load that cached artifact in seconds.
 
-`demo-local` is a reviewer-convenience path for exercising the architecture with nothing installed beyond `uv sync`, not a claim that its retrieval quality or performance matches production — the brute-force local query path is appropriate for a single reviewer's local index, not a production-scale deployment. See `docs/demo.md` for the full walkthrough and the exact dependency-inversion point it demonstrates: external infrastructure (Upstash Vector, Redis, Groq) can be swapped at the composition root (`aegis/api/bootstrap.py`) without the LangGraph workflow, application services, or domain contracts changing at all.
+`demo-local` is a reviewer-convenience path for exercising the architecture with nothing installed beyond `uv sync`, not a claim that its retrieval quality or performance matches the profiles below — the brute-force local query path is appropriate for a single reviewer's local index, not a production-scale deployment (see ADR-0003's Consequences).
+
+### 2. `demo` — real retrieval, minimal credentials
+
+The next step up trades the local index for the real one, at the cost of two credential pairs:
+
+```bash
+make db-init && make db-seed-icd   # once, before the first run
+make demo
+# equivalent to: AEGIS_PROFILE=demo uv run python scripts/demo_e2e.py
+```
+
+This drives the real FastAPI application (`aegis.api.main.app`) through its HTTP boundary using FastAPI's `TestClient` — the real lifespan, the real LangGraph workflow, and the real interrupt/resume suspension all run exactly as they would under a live server, against the same composition root (`aegis/api/bootstrap.py`) and the same real, locally-seeded `data/clinical_registry.db`. Only the cache, reasoning, and content-repository collaborators are deterministic in-memory substitutes — embedding and Upstash Vector retrieval stay real, querying the actual ~15,000-vector BGE-large index the offline indexing pipeline built. That means `make demo` needs `UPSTASH_VECTOR_REST_URL`/`UPSTASH_VECTOR_REST_TOKEN` and the `EMBEDDING_*` settings in `.env`, but not `GROQ_API_KEY` or Upstash Redis credentials. Because retrieval is real, the physician's decision in the script is read back from whatever the AI actually recommended, not a hardcoded ICD code.
+
+For the same profile as a real, long-lived server the React frontend (`frontend/`) talks to over HTTP — what a live interview walkthrough actually uses — run:
+
+```bash
+AEGIS_PROFILE=demo make demo-server
+# equivalent to: AEGIS_PROFILE=demo uv run uvicorn aegis.api.main:app --app-dir src --reload --port 9000
+```
+
+Submissions in this profile (script or server) must use one of the pre-seeded `content_reference` values in `aegis.api.bootstrap.DEMO_SAMPLE_NOTES` — see `docs/tradeoffs_and_limitations.md`'s "Live-Credential Content Seeding Gap" for why a freshly-typed note can't resolve against the real content store in any credentialed profile.
+
+A separate, fully fake/credential-free scenario also exists as an automated test — `tests/integration/test_clinical_pipeline.py` (fake embedding/retrieval, ephemeral SQLite, no `.env` needed) — including the cache-hit path on a repeat submission. That test exists for CI-speed regression coverage, not as another reviewer-facing profile; `demo-local` above is the credential-free path meant to be run and read.
+
+### 3. `integration` — real external infrastructure
+
+The verification profile: every credential production needs, exercised end to end, under a
+name that doesn't overload "production" semantics.
+
+```bash
+make integration
+# equivalent to: AEGIS_PROFILE=integration uv run python scripts/integration_e2e.py
+make integration-cache   # companion run: proves a cache MISS then HIT under a stable namespace
+```
+
+`scripts/integration_e2e.py` runs the identical workflow logic as `scripts/demo_e2e.py` (both share `scripts/e2e_common.py`), just wired to real collaborators throughout: real Redis-backed cache and real CrewAI/Groq reasoning replace `demo`'s in-memory ones, on top of the real Upstash Vector retrieval `demo` already used. It needs `GROQ_API_KEY` and the Upstash Redis credentials in addition to everything `demo` needs. Its purpose is verifying that the full external infrastructure wiring actually works — not exercising different application logic; a passing `make integration` is evidence the same code `production` runs is credential-complete.
+
+### 4. `production` — full deployment
+
+There is no separate "production script" — that would reintroduce the drift this profile
+architecture exists to avoid. `production` is `AEGIS_PROFILE`'s default value, so the same
+long-lived server command used for `demo`/`integration` above, run without a profile override
+(or with `AEGIS_PROFILE=production` explicit) and a complete `.env`:
+
+```bash
+make dev-backend
+# equivalent to: uv run uvicorn aegis.api.main:app --app-dir src --reload --port 9000
+```
+
+It requires everything `integration` requires — `GROQ_API_KEY`, the Upstash Redis pair, the Upstash Vector pair, and `EMBEDDING_*` — and constructs the identical real adapters `integration` verified. The only thing that changes between `integration` and `production` is intent and (optionally) `REDIS_CACHE_NAMESPACE`, which isolates their cached entries even against a shared Redis instance.
+
+---
+
+# Architecture Decision Records
+
+The sections above describe *what* the architecture is. `docs/adr/` records *why* it's shaped that way for the handful of decisions where the alternatives and tradeoffs are worth preserving, not just the outcome:
+
+- [ADR-0001 — Deterministic Orchestration Around Probabilistic Reasoning](docs/adr/0001-deterministic-orchestration-around-probabilistic-reasoning.md)
+- [ADR-0002 — Runtime Profile Architecture](docs/adr/0002-runtime-profile-architecture.md)
+- [ADR-0003 — Local Demo Execution Strategy](docs/adr/0003-local-demo-execution-strategy.md)
 
 ---
 

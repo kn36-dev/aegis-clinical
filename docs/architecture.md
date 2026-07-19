@@ -39,6 +39,19 @@ section.
 See `docs/orchestration.md` for the wired LangGraph workflow and
 `docs/clinical_note_ingestion_flow.md` for the runtime data flow.
 
+## Runtime profiles
+
+The three subsystems above, and every diagram below, describe the *application* — which is
+identical regardless of how it's run. What varies is which concrete infrastructure adapter
+the composition root (`api/bootstrap.py`) wires up for a handful of boundaries (cache,
+reasoning, content-repository, and, for one profile, vector retrieval), selected by a single
+`AEGIS_PROFILE` value: `production` | `demo` | `demo-local` | `integration`. This is a
+dependency-injection switch, not a code fork — see CLAUDE.md's "Runtime profiles" section for
+the per-profile comparison, the README's "Runtime Execution Profiles" section for how to run
+each one, and `docs/adr/0002-runtime-profile-architecture.md` /
+`docs/adr/0003-local-demo-execution-strategy.md` for the reasoning behind the mechanism and
+behind `demo-local` specifically.
+
 ## System architecture (layers)
 
 ```mermaid
