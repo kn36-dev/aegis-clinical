@@ -68,6 +68,7 @@ Future iterations may introduce AI-assisted parsing of free-text eligibility cri
 ## Indexing / Representation Strategy (Deferred)
 
 The current system intentionally adopts a single structured-prose representation for ICD-11 concepts to maintain a clean, interpretable baseline for evaluation and to avoid premature complexity in the indexing layer. Future iterations may extend this design to support multiple semantic representations of the same ICD concept, including title-based identity-focused encoding, hierarchical ontology-structured encoding, structured clinical prose encoding, and parent-context expanded ontology views. Each representation would produce an independent embedding for the same ICD concept, resulting in multiple vector entries per concept within the Upstash Vector index. This approach enables a deliberate trade-off between storage and indexing overhead versus retrieval robustness, increasing semantic coverage and reducing sensitivity to query phrasing variance. However, it also introduces duplication costs and additional indexing complexity, so it is intentionally deferred until the single-representation baseline has been empirically validated.
+
 ---
 
 ## Embedding Strategy (Deferred)
