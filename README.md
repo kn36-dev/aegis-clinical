@@ -281,6 +281,27 @@ Submissions in this profile must use one of the pre-seeded `content_reference` v
 
 ---
 
+# Running Demo-Local (Zero Credentials)
+
+`demo` above still needs Upstash Vector and `EMBEDDING_*` credentials — real semantic retrieval against a live external index is the point of that profile. `AEGIS_PROFILE=demo-local` is a third profile for the case where a reviewer wants to run the app with **no credentials of any kind**: not `GROQ_API_KEY`, not the Upstash Redis pair, not `UPSTASH_VECTOR_REST_URL`/`UPSTASH_VECTOR_REST_TOKEN`, not `OPENAI_API_KEY` — no `.env` file at all.
+
+It is, again, the exact same application, started with the same configuration value changed one step further:
+
+```bash
+uv sync
+make db-init && make db-seed-icd
+make demo-local
+# equivalent to: AEGIS_PROFILE=demo-local uv run uvicorn aegis.api.main:app --app-dir src --reload --port 9000
+```
+
+`AEGIS_PROFILE=demo-local` reuses the same in-memory cache, reasoning, and content-repository substitutes as `demo`, and additionally replaces retrieval itself: instead of querying a live Upstash Vector index, `aegis.indexing.local_compiler` compiles the real ~15,471-row ICD-11 taxonomy (the same rows `make db-seed-icd` seeds, not a toy fixture) through the same offline `IndexingPipeline`/`RepresentationBuilder` used to build the real index, embeds it locally with the same `SentenceTransformers` model (`BAAI/bge-large-en-v1.5`) the other profiles use by default, and serves queries from an in-memory `LocalVectorQueryProvider` running brute-force cosine similarity. Retrieval is therefore still real semantic search over the real taxonomy — never a hardcoded ICD code — just against a local index instead of Upstash's.
+
+**First run compiles the local index; every run after that loads it from a cache.** Embedding ~15k rows on CPU is a one-time cost of several minutes; the compiled result is persisted as a generated artifact under `.artifacts/local_vector_index/` (already `.gitignore`d, never committed), fingerprinted by a manifest (taxonomy content hash, row count, embedding model, dimensions) so any change to the taxonomy or embedding configuration triggers a fresh compile rather than silently serving a stale index. `--reload` restarts and subsequent `make demo-local` invocations load that cached artifact in seconds.
+
+`demo-local` is a reviewer-convenience path for exercising the architecture with nothing installed beyond `uv sync`, not a claim that its retrieval quality or performance matches production — the brute-force local query path is appropriate for a single reviewer's local index, not a production-scale deployment. See `docs/demo.md` for the full walkthrough and the exact dependency-inversion point it demonstrates: external infrastructure (Upstash Vector, Redis, Groq) can be swapped at the composition root (`aegis/api/bootstrap.py`) without the LangGraph workflow, application services, or domain contracts changing at all.
+
+---
+
 # Engineering Principles
 
 The architecture is guided by several core design principles:

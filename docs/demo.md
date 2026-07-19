@@ -63,6 +63,44 @@ curl http://localhost:9000/health
 > Upstash Redis credentials) — see the README's "Running the Demo Server" section for the
 > full profile comparison.
 
+### 2b. Zero-credential alternative: `demo-local`
+
+`AEGIS_PROFILE=demo` above still requires `UPSTASH_VECTOR_REST_URL`/`UPSTASH_VECTOR_REST_TOKEN`
+and the `EMBEDDING_*` settings — it keeps retrieval real against a live Upstash Vector index.
+If you want to run the whole pipeline with **no credentials and no `.env` file at all**, use
+`demo-local` instead:
+
+```bash
+uv sync                              # once
+make db-init && make db-seed-icd     # once — schema + ICD-11 taxonomy
+make demo-local
+# equivalent to: AEGIS_PROFILE=demo-local uv run uvicorn aegis.api.main:app --app-dir src --reload --port 9000
+```
+
+`demo-local` reuses the same in-memory cache, reasoning, and content-repository substitutes as
+`demo`, and additionally swaps retrieval itself: `aegis.indexing.local_compiler` compiles the
+real ICD-11 taxonomy `make db-seed-icd` seeded (not a toy fixture) through the same offline
+`IndexingPipeline` the real Upstash-backed index uses, embeds it locally with the same
+SentenceTransformers model the other profiles default to, and serves queries from an in-memory
+`LocalVectorQueryProvider`. Retrieval is still genuine semantic search over the real taxonomy —
+never a hardcoded ICD code — just against a local index instead of Upstash Vector.
+
+**First `demo-local` run compiles the local retrieval index; subsequent runs load it.** That
+first compile embeds ~15,471 taxonomy rows on CPU, which takes several minutes; the result is
+cached as a generated artifact under `.artifacts/local_vector_index/` (gitignored, never
+committed) with a manifest fingerprinting the taxonomy content, embedding model, and dimensions,
+so a changed taxonomy or embedding config triggers a recompile instead of silently serving a
+stale index. Every subsequent `make demo-local` — including `--reload` restarts — loads that
+cached artifact in seconds rather than recompiling.
+
+Do not read `demo-local`'s retrieval quality or latency as representative of `demo` or
+production: the brute-force local cosine-similarity query path exists for a credential-free
+reviewer path, not as a production-scale retrieval backend. The architectural point it
+demonstrates is narrower and, for this repo's purpose, more important — every external
+infrastructure boundary (Upstash Vector, Upstash Redis, Groq) can be swapped at the composition
+root (`aegis/api/bootstrap.py`) without changing the LangGraph workflow, application services, or
+domain contracts at all.
+
 ---
 
 ## 3. Frontend startup

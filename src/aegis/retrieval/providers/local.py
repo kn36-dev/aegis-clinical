@@ -61,7 +61,16 @@ class LocalVectorQueryProvider(VectorQueryProvider):
             VectorMatch(
                 id=document.representation.concept_id,
                 score=score,
-                metadata=document.representation.metadata.model_dump(),
+                # mode="json" (not the default "python") so enum fields
+                # (RepresentationMetadata.representation_type) serialize to
+                # plain strings here, matching what UpstashVectorQueryProvider
+                # returns after its own real JSON round-trip through Upstash
+                # storage. Without this, a raw RepresentationType enum member
+                # ends up embedded in downstream RetrievalResult/ReasoningContext
+                # state that LangGraph's checkpointer serializes -- and its
+                # msgpack serde blocks deserializing arbitrary non-allowlisted
+                # classes.
+                metadata=document.representation.metadata.model_dump(mode="json"),
             )
             for score, document in scored[:top_k]
         ]

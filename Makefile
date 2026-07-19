@@ -1,4 +1,4 @@
-.PHONY: dev-backend demo-server dev-frontend lint format test server-check demo
+.PHONY: dev-backend demo-server demo-local dev-frontend lint format test server-check demo
 
 # Run the FastAPI server on our unexcluded port
 dev-backend:
@@ -11,6 +11,19 @@ dev-backend:
 # CLAUDE.md's demo-profile design and docs/tradeoffs_and_limitations.md.
 demo-server:
 	AEGIS_PROFILE=demo uv run uvicorn aegis.api.main:app --app-dir src --reload --host 0.0.0.0 --port 9000
+
+# Zero-external-dependency reviewer profile. Same FastAPI app, same
+# LangGraph workflow, same routers as demo-server -- only AEGIS_PROFILE
+# differs again, this time also swapping vector retrieval itself: the
+# real ICD-11 taxonomy (from `make db-seed-icd`) is compiled into a
+# local, file-backed vector index on first run (aegis.indexing.local_compiler)
+# instead of querying Upstash Vector, so no Upstash Vector, OpenAI,
+# Groq, or Redis credentials are needed at all -- not even a .env file.
+# The first run compiles that local index (CPU-bound, several minutes
+# over ~15k rows); every run after that loads the cached artifact
+# instead. See docs/demo.md.
+demo-local:
+	AEGIS_PROFILE=demo-local uv run uvicorn aegis.api.main:app --app-dir src --reload --host 0.0.0.0 --port 9000
 
 # Run your React frontend (Assuming it sits in a 'frontend' subfolder)
 dev-frontend:

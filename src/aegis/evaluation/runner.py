@@ -19,6 +19,7 @@ from aegis.api.bootstrap import (
     build_embedding_provider,
     build_reasoning_provider,
     build_vector_query_provider,
+    open_clinical_connection,
     validate_embedding_compatibility,
 )
 from aegis.config import get_settings
@@ -69,7 +70,21 @@ def _build_retrieval_service(config: EvaluationConfig) -> tuple[RetrievalService
     settings = get_settings()
     embedding_config = EmbeddingConfiguration.from_settings(settings)
     embedding_provider = build_embedding_provider(embedding_config, settings)
-    vector_query_provider = build_vector_query_provider(settings)
+
+    # Only AEGIS_PROFILE=demo-local's branch of build_vector_query_provider
+    # actually reads from this connection (to compile/load the local
+    # vector index); every other profile still queries the real Upstash
+    # Vector index and ignores it. Opened and closed here rather than
+    # threaded through EvaluationConfig, since nothing downstream of
+    # vector_query_provider construction needs it to stay open.
+    connection = open_clinical_connection(settings)
+    try:
+        vector_query_provider = build_vector_query_provider(
+            settings, connection, embedding_provider
+        )
+    finally:
+        connection.close()
+
     validate_embedding_compatibility(embedding_config, embedding_provider, vector_query_provider)
 
     return DefaultRetrievalService(

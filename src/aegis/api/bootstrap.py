@@ -29,6 +29,7 @@ from aegis.database.database import init_clinical_database
 from aegis.database.repositories.icd_repository import ICDRepository
 from aegis.embeddings.openai import OpenAIEmbeddingProvider
 from aegis.embeddings.sentence_transformers import SentenceTransformersEmbeddingProvider
+from aegis.indexing.local_compiler import compile_or_load_local_vector_store
 from aegis.infrastructure.crewai.reasoning_provider import CrewAIReasoningProvider
 from aegis.infrastructure.memory.clinical_decision_cache_repository import (
     FakeClinicalDecisionCacheRepository,
@@ -41,6 +42,7 @@ from aegis.infrastructure.sqlite.icd_code_validator import SQLiteICDCodeValidato
 from aegis.infrastructure.upstash.clinical_decision_cache_repository import (
     UpstashClinicalDecisionCacheRepository,
 )
+from aegis.retrieval.providers.local import LocalVectorQueryProvider
 from aegis.retrieval.providers.upstash import UpstashVectorQueryProvider
 
 if TYPE_CHECKING:
@@ -133,16 +135,18 @@ DEMO_PATIENT_IDENTITIES: tuple[DemoPatientIdentity, ...] = (
 def seed_demo_patient_identities(connection: sqlite3.Connection, settings: AppSettings) -> None:
     """
     Idempotently seed ``DEMO_PATIENT_IDENTITIES`` into ``patient_identity_vault``
-    when ``settings.AEGIS_PROFILE == "demo"``; a no-op in every other profile.
+    when ``settings.AEGIS_PROFILE`` is ``"demo"`` or ``"demo-local"``; a
+    no-op in every other profile.
 
     ``INSERT OR IGNORE`` against ``patient_id`` (the table's primary key)
     makes this safe to call on every startup -- exactly the same idempotency
-    guarantee every numbered migration already relies on -- so re-running the
-    demo profile never produces duplicate rows or requires a teardown step.
-    Production and integration profiles are completely unaffected: this
-    never runs outside "demo", and never touches any row this doesn't own.
+    guarantee every numbered migration already relies on -- so re-running
+    either profile never produces duplicate rows or requires a teardown
+    step. Production and integration profiles are completely unaffected:
+    this never runs outside "demo"/"demo-local", and never touches any
+    row this doesn't own.
     """
-    if settings.AEGIS_PROFILE != "demo":
+    if settings.AEGIS_PROFILE not in ("demo", "demo-local"):
         return
 
     for identity in DEMO_PATIENT_IDENTITIES:
@@ -203,6 +207,14 @@ class EmbeddingConfiguration:
 
     @classmethod
     def from_settings(cls, settings: AppSettings) -> EmbeddingConfiguration:
+        # AppSettings.__init__ guarantees these three are populated by
+        # the time a container is being built -- either explicitly, or
+        # (AEGIS_PROFILE == "demo-local" only) defaulted -- and raises
+        # during settings construction otherwise; the asserts only
+        # narrow the Optional type for mypy.
+        assert settings.EMBEDDING_PROVIDER is not None
+        assert settings.EMBEDDING_MODEL is not None
+        assert settings.EMBEDDING_DIMENSIONS is not None
         return cls(
             provider=settings.EMBEDDING_PROVIDER,
             model=settings.EMBEDDING_MODEL,
@@ -238,8 +250,37 @@ def build_embedding_provider(
     )
 
 
-def build_vector_query_provider(settings: AppSettings) -> VectorQueryProvider:
-    """Construct the Upstash Vector runtime query adapter from settings."""
+def build_vector_query_provider(
+    settings: AppSettings,
+    connection: sqlite3.Connection,
+    embedding_provider: EmbeddingProvider,
+) -> VectorQueryProvider:
+    """
+    Construct the runtime ``VectorQueryProvider`` named by
+    ``settings.AEGIS_PROFILE``.
+
+    "demo-local" is the one profile that replaces retrieval itself: it
+    compiles the real ICD-11 taxonomy (already seeded into
+    ``connection`` by ``make db-seed-icd``) into a local, file-backed
+    vector index via ``compile_or_load_local_vector_store`` -- see that
+    function's docstring for the compile-once/reuse-after caching this
+    relies on -- and serves queries from it with
+    ``LocalVectorQueryProvider``. Every other profile queries the real
+    Upstash Vector index identically to before.
+    """
+    if settings.AEGIS_PROFILE == "demo-local":
+        assert settings.EMBEDDING_MODEL is not None
+        assert settings.EMBEDDING_DIMENSIONS is not None
+        store = compile_or_load_local_vector_store(
+            connection,
+            embedding_provider,
+            embedding_model=settings.EMBEDDING_MODEL,
+            embedding_dimensions=settings.EMBEDDING_DIMENSIONS,
+        )
+        return LocalVectorQueryProvider(store)
+
+    assert settings.UPSTASH_VECTOR_REST_URL is not None
+    assert settings.UPSTASH_VECTOR_REST_TOKEN is not None
     return UpstashVectorQueryProvider(
         url=str(settings.UPSTASH_VECTOR_REST_URL).rstrip("/"),
         token=settings.UPSTASH_VECTOR_REST_TOKEN.get_secret_value(),
@@ -325,9 +366,9 @@ def build_cache_repository(settings: AppSettings) -> ClinicalDecisionCacheReposi
     Construct the ``ClinicalDecisionCacheRepository`` named by
     ``settings.AEGIS_PROFILE``.
 
-    Demo profile uses the deterministic in-memory adapter: cache-hit
-    routing (``graphs.workflow._route_after_cache_lookup``) is
-    demonstrated identically either way, since that edge is deterministic
+    Demo and demo-local profiles both use the deterministic in-memory
+    adapter: cache-hit routing (``graphs.workflow._route_after_cache_lookup``)
+    is demonstrated identically either way, since that edge is deterministic
     code operating on whatever ``CacheService`` reports, not on which
     concrete store backs it. Production and integration profiles both
     need the real Redis-backed adapter's persistence-across-restarts
@@ -341,7 +382,7 @@ def build_cache_repository(settings: AppSettings) -> ClinicalDecisionCacheReposi
     entries -- see ``settings.REDIS_CACHE_NAMESPACE``. An explicit
     ``REDIS_CACHE_NAMESPACE`` overrides the profile-derived default.
     """
-    if settings.AEGIS_PROFILE == "demo":
+    if settings.AEGIS_PROFILE in ("demo", "demo-local"):
         return FakeClinicalDecisionCacheRepository()
 
     assert settings.UPSTASH_REDIS_REST_URL is not None
@@ -358,18 +399,20 @@ def build_reasoning_provider(settings: AppSettings) -> ReasoningProvider:
     """
     Construct the ``ReasoningProvider`` named by ``settings.AEGIS_PROFILE``.
 
-    Demo profile uses ``DeterministicTopCandidateReasoningProvider``
-    rather than Groq/CrewAI: it removes the one external dependency most
-    likely to fail or rate-limit during a live demo, while still
-    reasoning over the same real ``ReasoningContext`` real retrieval
-    produced -- see that class's docstring for why a naive hardcoded-code
-    fake cannot satisfy ``ClinicalReasoningService``'s validation once
-    retrieval is real. Production and integration profiles both use the
-    real ``CrewAIReasoningProvider`` -- integration exists specifically
-    to verify that adapter (and the Groq credential behind it) against
+    Demo and demo-local profiles both use
+    ``DeterministicTopCandidateReasoningProvider`` rather than
+    Groq/CrewAI: it removes the one external dependency most likely to
+    fail, rate-limit, or (for demo-local) require a credential at all,
+    while still reasoning over the same real ``ReasoningContext``
+    real retrieval produced -- see that class's docstring for why a
+    naive hardcoded-code fake cannot satisfy
+    ``ClinicalReasoningService``'s validation once retrieval is real.
+    Production and integration profiles both use the real
+    ``CrewAIReasoningProvider`` -- integration exists specifically to
+    verify that adapter (and the Groq credential behind it) against
     real infrastructure.
     """
-    if settings.AEGIS_PROFILE == "demo":
+    if settings.AEGIS_PROFILE in ("demo", "demo-local"):
         return DeterministicTopCandidateReasoningProvider()
 
     assert settings.GROQ_API_KEY is not None
@@ -387,16 +430,16 @@ def build_content_repository(settings: AppSettings) -> ClinicalNoteContentReposi
     ``settings.AEGIS_PROFILE``, or ``None`` to let ``build_container``
     default to the real ``SQLiteContentStore``.
 
-    Demo and integration profiles both substitute the in-memory adapter
-    pre-seeded with ``DEMO_SAMPLE_NOTES`` -- see that constant's
-    docstring for why this is not a demo/integration-mode preference
-    but a workaround for the documented "Live-Credential Content
-    Seeding Gap", which would block a fresh submission against the real
-    ``SQLiteContentStore`` in any profile. "production" is left
-    defaulting to the real store since it is not driven by an
+    Demo, demo-local, and integration profiles all substitute the
+    in-memory adapter pre-seeded with ``DEMO_SAMPLE_NOTES`` -- see that
+    constant's docstring for why this is not a demo/integration-mode
+    preference but a workaround for the documented "Live-Credential
+    Content Seeding Gap", which would block a fresh submission against
+    the real ``SQLiteContentStore`` in any profile. "production" is
+    left defaulting to the real store since it is not driven by an
     e2e script that submits fresh content on every run.
     """
-    if settings.AEGIS_PROFILE in ("demo", "integration"):
+    if settings.AEGIS_PROFILE in ("demo", "demo-local", "integration"):
         return FakeContentRepository(content_by_reference=DEMO_SAMPLE_NOTES)
     return None
 
@@ -407,13 +450,15 @@ def build_infrastructure(settings: AppSettings, connection: sqlite3.Connection) 
     the embedding/vector-index compatibility boundary, and assemble the
     full ``AegisContainer``.
 
-    Embedding, vector retrieval, and ICD taxonomy validation are
-    constructed identically regardless of ``settings.AEGIS_PROFILE`` --
-    every profile runs the same real semantic retrieval pipeline against
-    the same real Upstash Vector index. Only ``build_cache_repository``,
-    ``build_reasoning_provider``, ``build_content_repository``, and
-    ``seed_demo_patient_identities`` branch on profile, each in exactly
-    one place.
+    Embedding is constructed identically regardless of
+    ``settings.AEGIS_PROFILE`` -- every profile uses a real
+    ``EmbeddingProvider``, never a fake one. Vector retrieval is real
+    Upstash Vector in every profile except "demo-local", which is
+    branched inside ``build_vector_query_provider`` itself. ICD
+    taxonomy validation is always real. ``build_cache_repository``,
+    ``build_reasoning_provider``, ``build_content_repository``,
+    ``build_vector_query_provider``, and ``seed_demo_patient_identities``
+    each branch on profile in exactly one place.
 
     Raises ``EmbeddingCompatibilityError`` immediately -- before
     ``build_container`` is ever called -- if the configured embedding
@@ -423,7 +468,7 @@ def build_infrastructure(settings: AppSettings, connection: sqlite3.Connection) 
 
     embedding_config = EmbeddingConfiguration.from_settings(settings)
     embedding_provider = build_embedding_provider(embedding_config, settings)
-    vector_query_provider = build_vector_query_provider(settings)
+    vector_query_provider = build_vector_query_provider(settings, connection, embedding_provider)
     validate_embedding_compatibility(embedding_config, embedding_provider, vector_query_provider)
 
     icd_code_validator = SQLiteICDCodeValidator(ICDRepository(connection))
@@ -436,7 +481,7 @@ def build_infrastructure(settings: AppSettings, connection: sqlite3.Connection) 
         reasoning_provider=build_reasoning_provider(settings),
         reasoning_model_name=(
             DEMO_REASONING_MODEL_NAME
-            if settings.AEGIS_PROFILE == "demo"
+            if settings.AEGIS_PROFILE in ("demo", "demo-local")
             else settings.LLM_MODEL  # real model name for both production and integration
         ),
         icd_code_validator=icd_code_validator,

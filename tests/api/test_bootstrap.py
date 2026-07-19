@@ -255,7 +255,9 @@ class TestBuildInfrastructure:
             lambda config, settings: FakeEmbeddingProvider(vector=[0.1, 0.2, 0.3]),
         )
         monkeypatch.setattr(
-            bootstrap_module, "build_vector_query_provider", lambda settings: object()
+            bootstrap_module,
+            "build_vector_query_provider",
+            lambda settings, connection, embedding_provider: object(),
         )
         connection = open_clinical_connection(
             _SettingsStub(CLINICAL_DB_PATH=str(db_path))  # type: ignore[arg-type]
