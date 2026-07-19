@@ -1,5 +1,14 @@
 # aegis-clinical 🛡️
 
+## Repository Guide
+
+- 🚀 [10-minute demonstration walkthrough](docs/demo.md)
+- 🏗️ [Architecture deep dive](docs/architecture.md)
+- 🔄 [LangGraph orchestration model](docs/orchestration.md)
+- ⚖️ [Tradeoffs and limitations](docs/tradeoffs_and_limitations.md)
+- 📐 [Architecture Decision Records](docs/adr/)
+- 🧪 [Testing and evaluation methodology](docs/testing_and_evaluations.md)
+
 ## Deterministic AI Orchestration for Clinical Note Structuring
 
 `aegis-clinical` is a reference architecture demonstrating how modern AI systems can safely transform unstructured clinical notes into structured ICD-11 classifications through deterministic workflow orchestration, semantic retrieval, and human-in-the-loop validation.
