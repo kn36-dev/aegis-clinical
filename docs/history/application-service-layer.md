@@ -1,3 +1,9 @@
+> ⚠️ **ARCHIVED — DUPLICATE.** This document restates the application service layer that is
+> authoritatively defined in `application_service_finalized.md` and
+> `application_service_contracts/` (higher precedence per `CLAUDE.md`). To keep one
+> authoritative home per concept it has been moved here; the content is accurate but no
+> longer maintained. See those sources and `docs/architecture.md` for current truth.
+
 # AEGIS Clinical — Application Service Layer Architecture
 
 ## Overview

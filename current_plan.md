@@ -6,6 +6,28 @@ AEGIS is a reference implementation demonstrating production-grade AI systems en
 
 The implementation order deliberately follows architectural dependencies rather than framework dependencies. Every phase establishes a stable abstraction before introducing technologies that depend upon it.
 
+> **Status legend (v1, as built).** This roadmap is largely realized. Snapshot:
+> - **Phases 0–5, 7–9: shipped.** Offline knowledge compilation, runtime domain
+>   contracts, deterministic application services, persistence, prompts, the CrewAI
+>   reasoning boundary, the end-to-end LangGraph workflow, and the FastAPI layer are all
+>   wired and running.
+> - **Phase 6 (PydanticAI): deferred → Future v2.** v1 uses plain Pydantic for structured
+>   validation. PydanticAI is a declared dependency but **not integrated**; introducing it
+>   for typed agent/tool boundaries is a future evaluation, not a CrewAI replacement.
+> - **Phase 10 (Observability): partially shipped as v1 workflow visibility.** Workflow
+>   state is exposed through the `GET /api/v1/workflows/{workflow_id}` endpoint and the
+>   React workflow-stage timeline / review queue. **OpenTelemetry distributed tracing is
+>   Future v2** — not wired up.
+> - **Phase 11 (Evaluation): shipped as a custom deterministic framework**
+>   (`src/aegis/evaluation/`, `aegis-eval`) — Recall@K, Hit Rate@K, MRR, and deterministic
+>   reasoning scoring. **Braintrust and LLM-as-judge are Future v2.**
+> - Real endpoint names differ from the sketches below: ingest is
+>   `POST /api/v1/clinical-notes`; review is `GET`/`POST /api/v1/reviews/{thread_id}[/decision]`
+>   (no separate `/approve`/`/reject`/`/amend`); plus `GET /api/v1/demo/patients` and a
+>   `GET /health` readiness probe. See `src/aegis/api/routers/api_contract_plan.md`.
+> - Clinical trial matching (Phase-independent, referenced throughout) is **Future v2** —
+>   scaffolding exists but is not wired into the app.
+
 -------------------------------------------------------------------------------
 Phase 0 — Foundation & Infrastructure
 -------------------------------------------------------------------------------

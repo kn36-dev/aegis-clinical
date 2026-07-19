@@ -1,0 +1,20 @@
+%% HISTORICAL / SUPERSEDED: SymptomExtraction/TrialMatch stages were never built.
+%% Real artifact flow: ClinicalNote -> NormalizedClinicalNote -> RetrievalResult ->
+%% ReasoningContext -> CodingRecommendation -> ClinicalDecision.
+%% See ../data_transformation.mmd (current) and docs/orchestration.md.
+flowchart LR
+
+ClinicalNote
+    --> SymptomExtraction
+
+SymptomExtraction
+    --> TaxonomyCandidate
+
+TaxonomyCandidate
+    --> ICDSuggestion
+
+ICDSuggestion
+    --> PhysicianReview
+
+PhysicianReview
+    --> TrialMatch

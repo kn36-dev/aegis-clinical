@@ -1,16 +1,10 @@
+%% AEGIS current runtime domain-artifact flow (runtime_domain_contracts/).
 flowchart LR
 
-ClinicalNote
-    --> SymptomExtraction
-
-SymptomExtraction
-    --> TaxonomyCandidate
-
-TaxonomyCandidate
-    --> ICDSuggestion
-
-ICDSuggestion
-    --> PhysicianReview
-
-PhysicianReview
-    --> TrialMatch
+    ClinicalNoteSubmission
+        --> ClinicalNote
+        --> NormalizedClinicalNote
+        --> RetrievalResult
+        --> ReasoningContext
+        --> CodingRecommendation
+        --> ClinicalDecision

@@ -1,3 +1,9 @@
+%% HISTORICAL / SUPERSEDED: depicts the dropped trial-matching design
+%% (LoadPatient -> ExtractSymptoms -> ... -> MatchTrials). The real workflow is
+%% create_clinical_note -> normalize_note -> cache_lookup -> (retrieve_candidates ->
+%% assemble_context -> generate_recommendation -> human_review_pending -> decide_case ->
+%% persist_clinical_decision -> cache_store). See ../workflow_state_machine.mmd (current)
+%% and docs/orchestration.md. Trial matching is a Future v2 capability.
 flowchart TD
 
 subgraph State

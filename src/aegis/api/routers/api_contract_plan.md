@@ -26,9 +26,25 @@ src/aegis/api/
 │   └── trial.py
 └── routers/
     ├── clinical.py
-    ├── patients.py
+    ├── patient.py
     ├── review.py
-    └── trials.py
+    ├── trial.py
+    ├── workflow.py
+    └── demo.py
+
+## Wiring status (what `main.py` actually includes)
+
+Only four routers are registered in `aegis.api.main`:
+
+- **clinical** — `POST /api/v1/clinical-notes` (§1). **Wired.**
+- **review** — `GET`/`POST /api/v1/reviews/{thread_id}[/decision]` (§3). **Wired.**
+- **workflow** — `GET /api/v1/workflows/...` (§5, workflow observability). **Wired.**
+- **demo** — `GET /api/v1/demo/patients` (returns the pre-seeded demo patients used by the
+  demo profile). **Wired.** Not otherwise documented in this plan.
+
+The **patient** (§2) and **trial** (§4) routers exist as files but are **not** included in
+`main.py` — they are scaffolding for future capability (patient workspace and clinical
+trial matching, both Future v2), not live endpoints today.
 
 ---
 
@@ -96,6 +112,9 @@ See "3. Human-in-the-Loop (HITL)" below.
 ---
 
 # 2. Patient Workspace
+
+> **Status: not implemented (Future v2 scaffold).** The `patient` router is not wired into
+> `main.py`. The endpoints below are a plan, not live routes.
 
 Supports physician navigation and historical review.
 
@@ -354,6 +373,10 @@ boundary.
 
 # 4. Clinical Trial Management
 
+> **Status: not implemented (Future v2 scaffold).** The `trial` router is not wired into
+> `main.py`, and clinical trial matching is a documented Future v2 capability. The
+> endpoints below are a plan, not live routes.
+
 Used by researchers to manage eligibility studies.
 
 ## POST /api/v1/trials
@@ -452,6 +475,11 @@ Returns
 
 # 5. Workflow Monitoring
 
+> **Status: router wired** at prefix `/api/v1/workflows` (v1 observability). Confirm exact
+> path/response shape against `aegis.api.routers.workflow`; the sketch below predates the
+> implementation. Singular-lookup vs. cross-thread listing has the same enumeration gap
+> noted for the "review inbox" in §3.
+
 ## GET /api/v1/workflows/{workflow_id}
 
 Purpose
@@ -483,25 +511,32 @@ Example Statuses
 
 # 6. Health Check
 
-## GET /api/v1/health
+## GET /health (implemented)
 
 Purpose
 
-Simple application readiness endpoint.
+Lightweight readiness probe. Verifies only that the application booted, the DI container
+was assembled, and the graph compiled -- no SQLite/Redis/Upstash/LLM connectivity checks
+(those are enforced at startup before the app accepts traffic). Note the real path is
+`/health` (root), not `/api/v1/health`.
 
-Returns
+Returns (`dict[str, bool]`, see `aegis.api.main.health_check`)
 
-- status
-- engine
-- security profile
+- booted
+- container_ready
+- graph_ready
 
 Example
 
 {
-    "status": "healthy",
-    "engine": "LangGraph Active",
-    "security": "HIPAA Guarded"
+    "booted": true,
+    "container_ready": true,
+    "graph_ready": true
 }
+
+> The earlier `{status, engine, security: "HIPAA Guarded"}` shape was never implemented and
+> made no HIPAA claim in the real system -- see the identity-boundary note above: AEGIS
+> makes no claim of secure authentication or HIPAA compliance.
 
 ---
 

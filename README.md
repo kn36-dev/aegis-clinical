@@ -16,13 +16,15 @@ The application is intentionally organized around clear responsibility boundarie
 
 LangGraph acts as the macro-orchestrator of the application. It defines the immutable execution topology responsible for sequencing data anonymization, semantic retrieval, AI-assisted reasoning, physician review, persistence, and workflow resumption. Human-in-the-Loop (HITL) checkpoints suspend execution safely until physician approval before allowing downstream state transitions.
 
-### CrewAI — Parallel Domain Reasoning
+### CrewAI — Bounded Clinical Reasoning
 
-CrewAI encapsulates specialized worker agents responsible for bounded reasoning tasks, including symptom extraction, ICD-11 candidate analysis, and medical validation. Agent execution remains isolated inside deterministic workflow boundaries rather than controlling application flow directly.
+CrewAI encapsulates the clinical reasoning boundary. The v1 implementation intentionally uses a **single specialist reasoning agent** that interprets the anonymized note against the semantically retrieved ICD-11 candidates and produces a structured coding recommendation. The point of the boundary is not agent count — it is to keep reasoning cleanly separable from orchestration, so additional specialist agents (symptom extraction, negation/context analysis, temporal reasoning) can be added later without touching the LangGraph state machine. Agent execution stays isolated inside deterministic workflow boundaries and never controls application flow. See `docs/crewAI_architectural_decision.md`.
 
-### PydanticAI — Structured Validation Boundary
+### Pydantic — Structured Validation Boundary
 
-All AI-generated outputs pass through strongly typed PydanticAI models before entering the application domain. This boundary converts probabilistic language model responses into deterministic application objects while rejecting malformed, incomplete, or semantically invalid outputs before they reach persistence layers.
+All AI-generated outputs pass through strongly typed **Pydantic** models before entering the application domain. This boundary converts probabilistic language-model responses into deterministic application objects while rejecting malformed, incomplete, or semantically invalid outputs before they reach persistence layers.
+
+> **Future v2 exploration:** [PydanticAI](https://ai.pydantic.dev/) may be introduced for stronger typed agent/tool boundaries and structured agent execution. It is a declared dependency but is **not currently integrated** — v1 validation is plain Pydantic, and CrewAI remains the reasoning boundary. This is a future architectural evaluation, not a planned replacement of CrewAI.
 
 ---
 
@@ -36,7 +38,7 @@ SQLite serves as the authoritative source of truth for all mutable application s
 
 ### Upstash Vector — Semantic Retrieval
 
-A single Upstash Vector index contains a read-only `taxonomy_lookup` namespace populated with precomputed embeddings of the official ICD-11 taxonomy using OpenAI's `text-embedding-3-small` embedding model.
+A single Upstash Vector index contains a read-only `taxonomy_lookup` namespace populated with precomputed embeddings of the official ICD-11 taxonomy. The current default embedding provider is **SentenceTransformers `BAAI/bge-large-en-v1.5` (1024-dimensional)**; because embedding providers sit behind a swappable interface (`src/aegis/embeddings/`), OpenAI's `text-embedding-3-small` (1536-dimensional) can be selected instead via `EMBEDDING_*` settings without changing retrieval logic.
 
 The vector database functions exclusively as a semantic nearest-neighbor index, returning ICD-11 identifiers during similarity search. Clinical descriptions, taxonomy metadata, and application state remain solely within SQLite, following a pointer-based architecture that avoids duplicated mutable data across storage systems.
 
@@ -53,8 +55,8 @@ Every clinical note progresses through a deterministic execution pipeline:
 1. PHI anonymization and normalization.
 2. Deterministic Redis cache lookup using the normalized note hash.
 3. Semantic retrieval of candidate ICD-11 codes from Upstash Vector upon cache miss.
-4. Parallel AI-assisted validation through CrewAI workers.
-5. Structured validation via PydanticAI.
+4. Bounded AI-assisted reasoning through a single CrewAI clinical reasoning agent.
+5. Structured validation via Pydantic schemas.
 6. Human-in-the-Loop physician approval.
 7. Transactional persistence into SQLite.
 8. Deterministic Redis cache update for future identical requests.
@@ -66,31 +68,35 @@ This architecture intentionally combines deterministic state transitions with bo
 # Repository Structure
 
 ```text
-aegis_clinical/
-├── .github/
-│   └── workflows/              # Continuous Integration
-├── data/                       # Synthetic datasets and ICD-11 resources
-├── docs/                       # Detailed architecture documentation
-├── evals/                      # Evaluation harnesses and benchmark datasets
-│   ├── datasets/
-│   ├── metrics/
-│   └── scenarios/
+aegis-clinical/
+├── data/                        # ICD-11 CSV, seeded SQLite DBs, fixtures
+├── docs/                        # Reader-facing architecture docs (+ docs/history/)
+├── evals/                       # AI-quality eval dataset + harness (clinical_cases.jsonl)
+├── config/                      # evaluation.yaml / evaluation.production.yaml
+├── runtime_domain_contracts/    # Authoritative runtime domain contracts
+├── application_service_contracts/  # Authoritative application service contracts
+├── frontend/                    # React 19 + Vite physician dashboard (feature-based)
 ├── src/
 │   └── aegis/
-│       ├── agents/             # CrewAI worker implementations
-│       ├── graphs/             # LangGraph workflow definitions
-│       ├── schemas/            # PydanticAI models
-│       ├── storage/            # SQLite, Redis and Vector adapters
-│       ├── services/           # Domain services
-│       ├── hitl/               # Human-in-the-Loop workflow management
-│       └── observability/      # OpenTelemetry instrumentation
-├── tests/
-│   ├── unit/                   # Isolated component verification
-│   ├── integration/            # End-to-end application behaviour
-│   └── fixtures/
+│       ├── agents/              # CrewAI reasoning agent(s)
+│       ├── api/                 # FastAPI app, routers, bootstrap composition root
+│       ├── database/            # SQLite migrations, connection, repositories, CLI
+│       ├── embeddings/          # Swappable embedding providers (BGE / OpenAI)
+│       ├── vectorstores/        # Vector store abstraction (local / Upstash)
+│       ├── indexing/            # Offline knowledge-compilation pipeline (Phase 1)
+│       ├── retrieval/           # Runtime retrieval preparation (Phase 2)
+│       ├── services/            # Deterministic application services
+│       ├── graphs/              # LangGraph workflow, nodes, state, checkpointing
+│       ├── schemas/             # Pydantic structured-output validation
+│       ├── prompts/             # Versioned reasoning prompt assets
+│       ├── evaluation/          # Custom deterministic eval framework (aegis-eval)
+│       └── infrastructure/      # SQLite / Redis / CrewAI adapters
+├── tests/                       # Deterministic software-correctness tests
 ├── pyproject.toml
 └── README.md
 ```
+
+> Note: `.github/workflows/lint_and_typecheck.yml` exists but is currently empty — CI is not yet enforcing the quality gate. The `providers/` package is an orphaned earlier LLM-provider abstraction with no current callers.
 
 ---
 
@@ -106,9 +112,14 @@ Verify deterministic business logic, schema validation, state transitions, and u
 
 Validate complete workflow execution across orchestration, persistence, checkpointing, and Human-in-the-Loop interactions using synthetic datasets.
 
-## Evaluation Harness
+## Evaluation Framework
 
-Evaluation suites are maintained independently from traditional software tests. Rather than verifying functional correctness, they measure AI system behaviour, including ICD-11 extraction quality, semantic retrieval effectiveness, workflow invariants, regression detection, and structured output stability. This separation allows deterministic software verification and probabilistic AI evaluation to evolve independently.
+AI-quality evaluation is maintained independently from traditional software tests. AEGIS ships a **custom deterministic evaluation framework** (`src/aegis/evaluation/`, CLI: `aegis-eval`, dataset: `evals/clinical_cases.jsonl`, config-driven via `config/evaluation.yaml`) that reuses the same real application services the production workflow uses. It measures two boundaries:
+
+- **Retrieval quality** — Recall@K, Hit Rate@K, and Mean Reciprocal Rank against a curated ICD-11 fixture (`local`) or the real Upstash Vector index (`production`).
+- **Reasoning quality** — deterministic scoring only (no LLM-as-judge yet): schema validity, expected-code alignment, and evidence grounding.
+
+Every run writes reproducible, provenance-stamped reports (git commit, dataset hash, config hash, model/provider) under `.artifacts/evaluations/`. See `docs/testing_and_evaluations.md` for the full methodology and the deferred roadmap (LLM-as-judge, Braintrust experiment tracking — both future, not yet integrated).
 
 ---
 

@@ -1,0 +1,22 @@
+%% AEGIS current LangGraph workflow (src/aegis/graphs/workflow.py).
+%% The only conditional edge is the deterministic cache hit/miss route.
+flowchart TD
+
+    Start([START])
+    End([END])
+
+    A[create_clinical_note<br/>ClinicalNoteService]
+    B[normalize_note<br/>NormalizationService]
+    C[cache_lookup<br/>CacheService]
+    D{cache hit?<br/>_route_after_cache_lookup}
+    E[retrieve_candidates<br/>RetrievalService]
+    F[assemble_context<br/>ContextAssembler]
+    G[generate_recommendation<br/>ClinicalReasoningService / CrewAI]
+    H[human_review_pending<br/>interrupt/resume]
+    I[decide_case<br/>ClinicalDecisionService]
+    J[persist_clinical_decision<br/>PersistenceService / SQLite]
+    K[cache_store<br/>CacheService / Redis]
+
+    Start --> A --> B --> C --> D
+    D -->|hit: reuse ClinicalDecision| End
+    D -->|miss| E --> F --> G --> H --> I --> J --> K --> End

@@ -55,9 +55,17 @@ This database stores the domain data for the clinical pipeline:
 
 Default path:
 
-- data/graph_state.db
+- data/graph_checkpoints.db (`GRAPH_CHECKPOINT_DB_PATH` in `config.py`)
 
-This database stores workflow checkpoint blobs for LangGraph-style orchestration. Its purpose is not clinical reasoning but workflow state persistence and resumption.
+This database stores LangGraph workflow checkpoints for orchestration. Its purpose is not
+clinical reasoning but workflow state persistence and resumption.
+
+**Important:** at runtime the checkpoint tables are created and managed by LangGraph's
+`AsyncSqliteSaver` (`src/aegis/api/main.py`, configured in the FastAPI lifespan with a
+custom serializer from `graphs/checkpoint_serde.py`), **not** by the
+`0001_init_checkpoint_blob.sql` migration. That migration file is illustrative scaffolding
+describing the checkpoint concept; the authoritative on-disk schema is whatever
+`AsyncSqliteSaver` provisions.
 
 ## 4. Schema initialization flow
 
@@ -79,15 +87,20 @@ The migration order is:
 - clinical database:
   - 0001_init_patient_identity_vault
   - 0002_init_patient_case
-  - 0003_init_icd11_taxonomy_reference
+  - 0003_init_icd11_taxonomy_reference (creates table `icd11_taxonomy`)
   - 0004_init_patient_extracted_code
   - 0005_init_clinical_trial
   - 0006_init_trial_target_code
   - 0007_init_trial_match
   - 0008_init_human_review_log
+  - 0009_init_clinical_note_content
+  - 0010_add_content_reference_to_patient_case
+  - 0011_init_clinical_decision
+  - 0012_init_approved_icd_classification
 
 - graph database:
-  - 0001_init_checkpoint_blob
+  - 0001_init_checkpoint_blob (illustrative scaffolding — see §3.2; the runtime checkpoint
+    schema is provisioned by LangGraph's `AsyncSqliteSaver`, not this migration)
 
 ## 5. Connection behavior
 
@@ -136,19 +149,26 @@ Columns:
 - case_id: primary key; unique case identifier
 - patient_id: foreign key to patient_identity_vault(patient_id)
 - thread_id: unique workflow thread identifier for LangGraph resumption
-- status: current workflow state of the case
+- status: current workflow state; CHECK-constrained to `pending_ai`, `pending_hitl`, `archived`, `failed`, `completed`
 - ingress_timestamp: time the case entered the system
-- raw_clinical_note: the original note as ingested
-- anonymized_clinical_note: optionally sanitized version of the note
-- version: optimistic concurrency or revision marker
+- version: optimistic-concurrency revision marker
+- content_reference: added in migration 0010; links the case to its `clinical_note_content` record
 
 Important notes:
 
+- Note text is **not** stored on `patient_case`. The original `raw_clinical_note` /
+  `anonymized_clinical_note` columns were dropped in favor of a `content_reference`
+  pointer into the `clinical_note_content` table (see §6.9) — SQLite remains the single
+  source of clinical text, but content lives in its own table.
 - Each patient can have multiple cases.
-- Each case has a dedicated workflow thread, which is used to tie the case to the graph/checkpoint system.
-- The design is meant to support human-in-the-loop review and reprocessing.
+- Each case has a dedicated workflow thread, tying the case to the graph/checkpoint system.
+- The design supports human-in-the-loop review and reprocessing.
 
-### 6.3 icd11_taxonomy_reference
+### 6.3 icd11_taxonomy
+
+(Migration `0003_init_icd11_taxonomy_reference` creates a table literally named
+`icd11_taxonomy` — the `_reference` suffix survives only in the migration filename and in
+an older commented-out schema.)
 
 Purpose:
 
@@ -267,6 +287,57 @@ Why it exists:
 
 - The system is designed to support human-in-the-loop oversight.
 - This table preserves a tamper-evident audit trail.
+
+### 6.9 clinical_note_content (migration 0009)
+
+Purpose:
+
+- Stores the actual clinical note text, keyed by a content reference, keeping note content
+  out of `patient_case` while remaining in SQLite (the single source of truth).
+
+Columns:
+
+- content_reference: primary key; the reference `patient_case.content_reference` points to
+- case_id: foreign key to patient_case(case_id)
+- content_payload: the note text
+- checksum: integrity marker over the payload
+- created_at: timestamp
+
+### 6.10 clinical_decision (migration 0011)
+
+Purpose:
+
+- The authoritative physician-approved decision artifact — institutional clinical truth
+  produced at the human-review boundary.
+
+Columns:
+
+- decision_id: primary key
+- case_id: foreign key to patient_case(case_id)
+- patient_id_reference: foreign key to patient_identity_vault(patient_id)
+- normalization_version: the normalization version the decision was made against
+- created_at: timestamp
+
+### 6.11 approved_icd_classification (migration 0012)
+
+Purpose:
+
+- The set of approved ICD codes belonging to a `clinical_decision`, with each code's
+  disposition relative to the AI recommendation.
+
+Columns:
+
+- decision_id: part of composite primary key; foreign key to clinical_decision(decision_id) ON DELETE CASCADE
+- icd_code: part of composite primary key; foreign key to icd11_taxonomy(code)
+- disposition: CHECK-constrained to `accepted`, `added`, `removed`, `modified`
+- sequence_index: ordering of codes within the decision
+
+> **Contract note (unresolved):** the database CHECK here permits all four dispositions
+> (`accepted`/`added`/`removed`/`modified`), and the graph's `decide_case` classifies
+> accordingly — but the finalized `ClinicalDecision` domain contract
+> (`runtime_domain_contracts/clinical_decision.md`) is documented as supporting only
+> ACCEPTED/ADDED. This contract-vs-implementation gap is a known open item requiring an
+> architectural decision; it is flagged, not resolved here.
 
 ## 7. Table in the graph/state database
 

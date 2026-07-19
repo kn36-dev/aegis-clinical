@@ -1,3 +1,11 @@
+> ⚠️ **HISTORICAL / SUPERSEDED SNAPSHOT.** This is a point-in-time architectural summary
+> from just after offline knowledge compilation, when runtime orchestration had not yet
+> been built. Its "Ready to Begin Runtime Orchestration" framing no longer reflects the
+> system — the LangGraph workflow is now fully wired. It also duplicates higher-authority
+> sources. For current truth see `domain_contract_finalized.md` and
+> `runtime_domain_contracts/` (authoritative), and `docs/orchestration.md`. Retained for
+> historical/portfolio context only.
+
 # AEGIS Clinical — Architectural Summary & Design Decisions
 Version: Runtime Domain Language Complete
 Status: Ready to Begin Runtime Orchestration (LangGraph + CrewAI)
