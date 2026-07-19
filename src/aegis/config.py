@@ -72,6 +72,17 @@ class AppSettings(BaseSettings):
     RETRIEVAL_TOP_K: int = Field(default=5, gt=0)
     RETRIEVAL_SIMILARITY_THRESHOLD: float | None = Field(default=None)
 
+    # PHI/debug boundary for GET /api/v1/workflows/{workflow_id}: whether
+    # that endpoint is even allowed to include raw RetrievalResult /
+    # ReasoningContext / CodingRecommendation artifact payloads when a
+    # caller additionally asks for them via ?include_artifacts=true (see
+    # aegis.api.routers.workflow). Deliberately independent of
+    # AEGIS_PROFILE, which selects runtime collaborators/infrastructure
+    # wiring only and must not also become a data-visibility switch.
+    # False in production; set true for demo/staging environments where
+    # exposing internal AI execution traces is acceptable.
+    EXPOSE_WORKFLOW_ARTIFACTS: bool = Field(default=False)
+
     # Local SQLite paths defined in your architecture map
     CLINICAL_DB_PATH: str = "data/clinical_registry.db"
     GRAPH_CHECKPOINT_DB_PATH: str = "data/graph_checkpoints.db"

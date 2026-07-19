@@ -1,4 +1,6 @@
+import { useState } from "react";
 import type { WorkflowObservabilityResponse } from "../../domain/workflow";
+import { ArtifactJsonViewer } from "./components/ArtifactJsonViewer";
 
 export type WorkflowObservabilityState =
   | { kind: "loading" }
@@ -44,8 +46,30 @@ function labelFor(node: string): string {
  * cache-miss run. Observability is a secondary, best-effort view: if it
  * fails to load, that is surfaced honestly rather than silently retrying
  * or synthesizing a placeholder timeline.
+ *
+ * A stage whose ``artifact`` the backend populated (retrieval completed /
+ * reasoning context assembled / AI recommendation generated -- see
+ * ``WorkflowStageArtifact``) is clickable: clicking expands a raw JSON
+ * viewer of that artifact below the stage, clicking again collapses it.
+ * Stages without an artifact (either the node never produces one, or the
+ * PHI/debug boundary withheld it) render as plain, non-interactive entries
+ * -- exactly as before this capability existed.
  */
 export function WorkflowStageTimeline({ state }: WorkflowStageTimelineProps) {
+  const [expandedStageKeys, setExpandedStageKeys] = useState<Set<string>>(() => new Set());
+
+  function toggleStage(key: string) {
+    setExpandedStageKeys((previous) => {
+      const next = new Set(previous);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
   if (state.kind === "loading") {
     return (
       <div className="workflow-stage-timeline">
@@ -69,18 +93,43 @@ export function WorkflowStageTimeline({ state }: WorkflowStageTimelineProps) {
   return (
     <div className="workflow-stage-timeline">
       <ol className="workflow-stage-timeline__stages" aria-label="Workflow progress">
-        {stages.map((stage) => (
-          <li
-            key={`${stage.node}-${stage.completed_at}`}
-            className="workflow-stage-timeline__stage workflow-stage-timeline__stage--complete"
-          >
-            <span className="workflow-stage-timeline__marker" aria-hidden="true" />
-            <span className="workflow-stage-timeline__label">{labelFor(stage.node)}</span>
-            <span className="workflow-stage-timeline__timestamp">
-              {new Date(stage.completed_at).toLocaleString()}
-            </span>
-          </li>
-        ))}
+        {stages.map((stage) => {
+          const key = `${stage.node}-${stage.completed_at}`;
+          const isExpandable = Boolean(stage.artifact);
+          const isExpanded = isExpandable && expandedStageKeys.has(key);
+
+          return (
+            <li
+              key={key}
+              className="workflow-stage-timeline__stage workflow-stage-timeline__stage--complete"
+            >
+              {isExpandable ? (
+                <button
+                  type="button"
+                  className="workflow-stage-timeline__toggle"
+                  aria-expanded={isExpanded}
+                  onClick={() => toggleStage(key)}
+                >
+                  <span className="workflow-stage-timeline__marker" aria-hidden="true" />
+                  <span className="workflow-stage-timeline__label">{labelFor(stage.node)}</span>
+                </button>
+              ) : (
+                <>
+                  <span className="workflow-stage-timeline__marker" aria-hidden="true" />
+                  <span className="workflow-stage-timeline__label">{labelFor(stage.node)}</span>
+                </>
+              )}
+              <span className="workflow-stage-timeline__timestamp">
+                {new Date(stage.completed_at).toLocaleString()}
+              </span>
+              {isExpanded && stage.artifact && (
+                <div className="workflow-stage-timeline__artifact-panel">
+                  <ArtifactJsonViewer artifact={stage.artifact} />
+                </div>
+              )}
+            </li>
+          );
+        })}
         {currentNode && (
           <li className="workflow-stage-timeline__stage workflow-stage-timeline__stage--pending">
             <span className="workflow-stage-timeline__marker" aria-hidden="true" />

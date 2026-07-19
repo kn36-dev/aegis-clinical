@@ -16,11 +16,34 @@ cache-miss run, and that difference is preserved rather than hidden.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel
 
 from aegis.api.schemas.review import ReviewWorkflowStatus
+
+
+class WorkflowStageArtifact(BaseModel):
+    """
+    Raw domain artifact produced by one completed workflow stage.
+
+    ``artifact_type`` names which ``AegisWorkflowState`` field the
+    payload came from (``"retrieval_result"``, ``"reasoning_context"``,
+    or ``"coding_recommendation"``) -- see
+    ``aegis.api.routers.workflow._ARTIFACT_FIELDS``. ``payload`` is that
+    domain model's own ``model_dump(mode="json")`` output, rendered
+    exactly as the graph produced it: no re-derivation, no curation, no
+    typed re-wrapping into a second schema. This is an observability/
+    debug trace surface, not a domain API -- the payload shape tracks
+    whatever the corresponding domain model (``aegis.models.retrieval
+    .RetrievalResult``, ``aegis.models.reasoning_context.ReasoningContext``,
+    ``aegis.models.coding_recommendation.CodingRecommendation``) already
+    defines, and callers must not assume a fixed structure beyond that.
+    """
+
+    artifact_type: str
+    payload: dict[str, Any]
 
 
 class WorkflowStageResponse(BaseModel):
@@ -32,10 +55,20 @@ class WorkflowStageResponse(BaseModel):
     ``"human_review_pending"``) -- not a paraphrased or invented label.
     ``completed_at`` is that transition's own checkpoint timestamp, as
     recorded by the checkpointer at the time it actually happened.
+
+    ``artifact`` is present only for the handful of stages that produce
+    one of the three artifacts this endpoint can expose (see
+    ``WorkflowStageArtifact``), and only when both the server
+    (``AppSettings.EXPOSE_WORKFLOW_ARTIFACTS``) and the caller
+    (``?include_artifacts=true``) opt in -- see
+    ``aegis.api.routers.get_workflow_observability``. It is ``None`` for
+    every other stage, and ``None`` for all stages whenever either side
+    of that opt-in is missing.
     """
 
     node: str
     completed_at: datetime
+    artifact: WorkflowStageArtifact | None = None
 
 
 class WorkflowObservabilityResponse(BaseModel):

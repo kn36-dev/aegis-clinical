@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, AsyncIterator
+from typing import TYPE_CHECKING, Any, AsyncIterator
 from uuid import uuid4
 
 from fastapi import FastAPI
@@ -24,6 +24,9 @@ from langgraph.types import Interrupt
 
 from aegis.api.dependencies import get_graph
 from aegis.api.routers import workflow
+
+if TYPE_CHECKING:
+    import pytest
 
 FIXED_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -243,3 +246,107 @@ def test_state_history_failure_translated_without_leaking_internals() -> None:
 
     assert response.status_code == 502
     assert "disk I/O error" not in response.json()["detail"]
+
+
+class _FakeSettings:
+    """Minimal stand-in for ``AppSettings`` -- only the field this router reads."""
+
+    def __init__(self, expose_workflow_artifacts: bool) -> None:
+        self.EXPOSE_WORKFLOW_ARTIFACTS = expose_workflow_artifacts
+
+
+class _FakeArtifactModel:
+    """Stands in for a domain model (``RetrievalResult``, ...) with a real ``model_dump``."""
+
+    def __init__(self, payload: dict[str, Any]) -> None:
+        self._payload = payload
+
+    def model_dump(self, mode: str) -> dict[str, Any]:
+        assert mode == "json"
+        return self._payload
+
+
+def make_pending_history_with_real_artifacts(case_id: Any) -> list[FakeStateSnapshot]:
+    """
+    Same shape as ``make_pending_history``, but ``retrieval_result``,
+    ``reasoning_context``, and ``coding_recommendation`` are fakes with a
+    real ``model_dump`` rather than bare ``object()`` sentinels, so the
+    artifact-serialization path can actually run against them.
+    """
+    history = make_pending_history(case_id)
+    artifact_payloads = {
+        "retrieval_result": {"candidates": ["fake-retrieval-payload"]},
+        "reasoning_context": {"anonymized_clinical_text": "fake-reasoning-payload"},
+        "coding_recommendation": {"reasoning_summary": "fake-recommendation-payload"},
+    }
+    for snapshot in history:
+        for field_name, payload in artifact_payloads.items():
+            if field_name in snapshot.values:
+                snapshot.values[field_name] = _FakeArtifactModel(payload)
+    return history
+
+
+def test_include_artifacts_omitted_when_server_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case_id = uuid4()
+    workflow_id = uuid4()
+    fake_graph = FakeCompiledGraph(history=make_pending_history_with_real_artifacts(case_id))
+    app = make_app(fake_graph)
+    monkeypatch.setattr(workflow, "get_settings", lambda: _FakeSettings(False))
+    client = TestClient(app)
+
+    response = client.get(f"/api/v1/workflows/{workflow_id}?include_artifacts=true")
+
+    assert response.status_code == 200
+    assert all(stage["artifact"] is None for stage in response.json()["stages"])
+
+
+def test_include_artifacts_omitted_when_caller_does_not_request_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case_id = uuid4()
+    workflow_id = uuid4()
+    fake_graph = FakeCompiledGraph(history=make_pending_history_with_real_artifacts(case_id))
+    app = make_app(fake_graph)
+    monkeypatch.setattr(workflow, "get_settings", lambda: _FakeSettings(True))
+    client = TestClient(app)
+
+    response = client.get(f"/api/v1/workflows/{workflow_id}")
+
+    assert response.status_code == 200
+    assert all(stage["artifact"] is None for stage in response.json()["stages"])
+
+
+def test_include_artifacts_populated_when_server_and_caller_both_opt_in(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    case_id = uuid4()
+    workflow_id = uuid4()
+    fake_graph = FakeCompiledGraph(history=make_pending_history_with_real_artifacts(case_id))
+    app = make_app(fake_graph)
+    monkeypatch.setattr(workflow, "get_settings", lambda: _FakeSettings(True))
+    client = TestClient(app)
+
+    response = client.get(f"/api/v1/workflows/{workflow_id}?include_artifacts=true")
+
+    assert response.status_code == 200
+    stages = {stage["node"]: stage for stage in response.json()["stages"]}
+
+    assert stages["retrieve_candidates"]["artifact"] == {
+        "artifact_type": "retrieval_result",
+        "payload": {"candidates": ["fake-retrieval-payload"]},
+    }
+    assert stages["assemble_context"]["artifact"] == {
+        "artifact_type": "reasoning_context",
+        "payload": {"anonymized_clinical_text": "fake-reasoning-payload"},
+    }
+    assert stages["generate_recommendation"]["artifact"] == {
+        "artifact_type": "coding_recommendation",
+        "payload": {"reasoning_summary": "fake-recommendation-payload"},
+    }
+    # Stages that never produce one of the three artifacts stay None even
+    # when both sides of the opt-in are satisfied.
+    assert stages["create_clinical_note"]["artifact"] is None
+    assert stages["normalize_note"]["artifact"] is None
+    assert stages["cache_lookup"]["artifact"] is None

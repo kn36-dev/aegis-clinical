@@ -82,7 +82,7 @@ export function DecisionDetailPage() {
   // endpoint is purely observational, so its failure must never block
   // rendering the review itself.
   function refreshObservability(currentWorkflowId: string, cancelledRef: { current: boolean }) {
-    getWorkflowObservability(currentWorkflowId)
+    getWorkflowObservability(currentWorkflowId, true)
       .then((observability) => {
         if (!cancelledRef.current) {
           setObservabilityState({ kind: "loaded", observability });
