@@ -1,4 +1,4 @@
-.PHONY: dev-backend demo-server demo-local dev-frontend lint format test server-check demo
+.PHONY: dev-backend demo-server demo-local demo-local-all dev-frontend lint format test server-check demo
 
 # Run the FastAPI server on our unexcluded port
 dev-backend:
@@ -25,10 +25,13 @@ demo-server:
 demo-local:
 	AEGIS_PROFILE=demo-local uv run uvicorn aegis.api.main:app --app-dir src --reload --host 0.0.0.0 --port 9000
 
-# Run your React frontend (Assuming it sits in a 'frontend' subfolder)
+# Run the React frontend against the local FastAPI backend.
+# VITE_API_BASE_URL defaults to the local development server but can be
+# overridden by the caller, e.g.
+# VITE_API_BASE_URL=https://staging.example.com make dev-frontend
 dev-frontend:
-	cd frontend && pnpm run dev
-
+	cd frontend && VITE_API_BASE_URL=$${VITE_API_BASE_URL:-http://localhost:9000} pnpm run dev
+ 
 # Run all code quality sanitizers sequentially
 server-check:
 	uv run ruff format
