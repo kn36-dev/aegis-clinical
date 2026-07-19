@@ -1,0 +1,12 @@
+%% AEGIS runtime retrieval (Phase 2, v1, as implemented) -- the retrieve_candidates and
+%% assemble_context nodes in graphs/workflow.py, backed by services/retrieval_service.py
+%% and services/context_assembler.py. Runs on every cache-miss request; reads the index
+%% built offline (see offline_indexing_pipeline.mmd) but never writes to it.
+flowchart LR
+    Note["Normalized Clinical Note<br/>(post cache-miss)"]
+    Embed["EmbeddingProvider.embed_query<br/>same provider as offline compilation"]
+    Search["Upstash Vector similarity search<br/>RetrievalService / VectorQueryProvider"]
+    Candidates["Retrieved ICD-11 candidates<br/>(RetrievalCandidate list, similarity_score only)"]
+    Context["ContextAssembler<br/>-> single ReasoningContext"]
+
+    Note --> Embed --> Search --> Candidates --> Context

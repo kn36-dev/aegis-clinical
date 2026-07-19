@@ -31,8 +31,61 @@ and Upstash Vector as derived layers.
    from retrieved candidates); Pydantic validates output; physician review gates
    persistence; results are written transactionally to SQLite and Redis is updated.
 
+Subsystem 1 (offline) and subsystems 2–3 (runtime) never share a code path — see
+`../offline_indexing_pipeline.mmd` vs. `../runtime_retrieval_pipeline.mmd`, both embedded
+side by side in the README's "Retrieval: Offline Compilation vs. Runtime Inference"
+section.
+
 See `docs/orchestration.md` for the wired LangGraph workflow and
 `docs/clinical_note_ingestion_flow.md` for the runtime data flow.
+
+## System architecture (layers)
+
+```mermaid
+flowchart TD
+    FE["React 19 + Vite Frontend"]
+
+    subgraph API["FastAPI — aegis.api"]
+        Routers["Routers: clinical · review · workflow · demo"]
+    end
+
+    subgraph Orchestration["LangGraph — aegis.graphs"]
+        Graph["AegisWorkflowState state machine<br/>(workflow.py, one conditional edge:<br/>cache hit/miss)"]
+    end
+
+    Checkpoint[("graph_checkpoints.db<br/>AsyncSqliteSaver")]
+
+    subgraph AppServices["Application Services — aegis.services"]
+        Svc["ClinicalNoteService · NormalizationService · CacheService<br/>RetrievalService · ContextAssembler · ClinicalReasoningService<br/>ClinicalDecisionService · PersistenceService"]
+    end
+
+    CrewAI["CrewAI reasoning agent<br/>infrastructure/crewai (crewai.LLM -> Groq)"]
+
+    subgraph Repos["Repositories & Infrastructure Adapters"]
+        RepoLayer["clinical_note_repository · clinical_decision_repository<br/>icd_repository · review_repository · content_store"]
+    end
+
+    SQLite[("SQLite — clinical_registry.db<br/>system of record")]
+    Redis[("Upstash Redis — SHA-256 cache")]
+    Vector[("Upstash Vector — taxonomy_lookup, read-only")]
+    EvalHarness["Evaluation Framework<br/>aegis.evaluation / aegis-eval CLI"]
+
+    FE -->|HTTP / JSON| Routers
+    Routers -->|invoke / resume Command| Graph
+    Graph -->|workflow state, artifacts| Routers
+    Graph -->|checkpointed via| Checkpoint
+    Graph -->|calls, injected at composition root| Svc
+    Svc -->|generate_recommendation| CrewAI
+    Svc -->|persist_clinical_decision| RepoLayer
+    RepoLayer --> SQLite
+    Svc -->|cache_lookup / cache_store| Redis
+    Svc -->|retrieve_candidates| Vector
+    EvalHarness -.->|reuses RetrievalService / ContextAssembler| Svc
+```
+
+*Source: `../system_architecture.mmd`, also embedded in the README's "System Architecture"
+section. The graph layer has no infrastructure imports of its own — every external system
+is reached through an injected application service.*
 
 ## Repository structure (real)
 

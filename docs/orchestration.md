@@ -19,23 +19,30 @@ is owned by the application service the corresponding node calls. A node resembl
 Shared state: `AegisWorkflowState` (`src/aegis/graphs/state.py`), consolidated into
 domain-artifact fields.
 
-```text
-START
-  → create_clinical_note        (ClinicalNoteService)
-  → normalize_note              (NormalizationService: PHI anonymize + normalize)
-  → cache_lookup                (CacheService: SHA-256 exact-match Redis lookup)
-  → [deterministic conditional edge: _route_after_cache_lookup]
-        cache hit  → END        (prior ClinicalDecision reused; no AI, no retrieval)
-        cache miss ↓
-  → retrieve_candidates         (RetrievalService: embed + Upstash Vector)
-  → assemble_context            (ContextAssembler → ReasoningContext)
-  → generate_recommendation     (ClinicalReasoningService / CrewAI → CodingRecommendation)
-  → human_review_pending        (interrupt/resume boundary — no service)
-  → decide_case                 (ClinicalDecisionService → ClinicalDecision)
-  → persist_clinical_decision   (PersistenceService → SQLite)
-  → cache_store                 (CacheService → Redis write-back)
-  → END
+```mermaid
+flowchart TD
+    Start([START])
+    End([END])
+
+    A[create_clinical_note<br/>ClinicalNoteService]
+    B[normalize_note<br/>NormalizationService]
+    C[cache_lookup<br/>CacheService]
+    D{cache hit?<br/>_route_after_cache_lookup}
+    E[retrieve_candidates<br/>RetrievalService]
+    F[assemble_context<br/>ContextAssembler]
+    G[generate_recommendation<br/>ClinicalReasoningService / CrewAI]
+    H[human_review_pending<br/>interrupt/resume]
+    I[decide_case<br/>ClinicalDecisionService]
+    J[persist_clinical_decision<br/>PersistenceService / SQLite]
+    K[cache_store<br/>CacheService / Redis]
+
+    Start --> A --> B --> C --> D
+    D -->|hit: reuse ClinicalDecision| End
+    D -->|miss| E --> F --> G --> H --> I --> J --> K --> End
 ```
+
+*Source: `../workflow_state_machine.mmd`, also embedded in the README's "Clinical Processing
+Pipeline" section.*
 
 ## Conditional routing
 

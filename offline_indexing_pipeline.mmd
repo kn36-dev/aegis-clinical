@@ -1,0 +1,18 @@
+%% AEGIS offline knowledge-compilation pipeline (Phase 1, v1, as implemented).
+%% Verified against: src/aegis/indexing/{pipeline,builders,embedder,uploader}.py, embeddings/, vectorstores/.
+%% Runs only when the ICD-11 taxonomy changes. Deterministic, reproducible, no LangGraph,
+%% no runtime request in flight. Deliberately kept separate from runtime retrieval
+%% (see runtime_retrieval_pipeline.mmd) -- neither store depends on the other at request time.
+flowchart LR
+    Dataset["ICD-11 dataset<br/>data/icd11.csv"]
+    Seed[("SQLite<br/>ICD-11 taxonomy table<br/>via aegis-db seed --icd")]
+    Builder["RepresentationBuilder<br/>indexing/builders.py<br/>Title / Hierarchy / Prose variants"]
+    Embedder["EmbeddingProvider<br/>embeddings/ (BGE-large default, OpenAI swappable)"]
+    Uploader["VectorUploader<br/>indexing/uploader.py<br/>resumable via state/upload_checkpoint.json"]
+    Vector[("Upstash Vector<br/>taxonomy_lookup namespace<br/>ids + metadata only")]
+
+    Dataset --> Seed
+    Seed --> Builder
+    Builder --> Embedder
+    Embedder --> Uploader
+    Uploader --> Vector

@@ -1,0 +1,44 @@
+%% AEGIS overall system architecture (v1, as implemented).
+%% Verified against: src/aegis/api/main.py, graphs/workflow.py, services/, database/repositories/,
+%% infrastructure/{sqlite,upstash,memory,crewai}, evaluation/. Layer order matches the
+%% deterministic/probabilistic boundary described in CLAUDE.md and docs/architecture.md.
+flowchart TD
+    FE["React 19 + Vite Frontend<br/>clinical-submission · review-queue<br/>decision-detail · workflow-visibility"]
+
+    subgraph API["FastAPI — aegis.api"]
+        Routers["Routers: clinical · review · workflow · demo"]
+    end
+
+    subgraph Orchestration["LangGraph — aegis.graphs"]
+        Graph["AegisWorkflowState state machine<br/>(workflow.py, one conditional edge:<br/>cache hit/miss)"]
+    end
+
+    Checkpoint[("graph_checkpoints.db<br/>AsyncSqliteSaver")]
+
+    subgraph AppServices["Application Services — aegis.services"]
+        Svc["ClinicalNoteService · NormalizationService · CacheService<br/>RetrievalService · ContextAssembler · ClinicalReasoningService<br/>ClinicalDecisionService · PersistenceService"]
+    end
+
+    CrewAI["CrewAI reasoning agent<br/>infrastructure/crewai (crewai.LLM -> Groq)"]
+
+    subgraph Repos["Repositories & Infrastructure Adapters<br/>aegis.database.repositories / aegis.infrastructure"]
+        RepoLayer["clinical_note_repository · clinical_decision_repository<br/>icd_repository · review_repository · content_store"]
+    end
+
+    SQLite[("SQLite<br/>clinical_registry.db<br/>system of record")]
+    Redis[("Upstash Redis<br/>SHA-256 exact-match cache")]
+    Vector[("Upstash Vector<br/>taxonomy_lookup, read-only")]
+
+    EvalHarness["Evaluation Framework<br/>aegis.evaluation / aegis-eval CLI<br/>(offline, no LangGraph)"]
+
+    FE -->|HTTP / JSON| Routers
+    Routers -->|invoke / resume Command| Graph
+    Graph -->|workflow state, artifacts| Routers
+    Graph -->|checkpointed via| Checkpoint
+    Graph -->|calls, injected at composition root| Svc
+    Svc -->|generate_recommendation| CrewAI
+    Svc -->|persist_clinical_decision| RepoLayer
+    RepoLayer --> SQLite
+    Svc -->|cache_lookup / cache_store| Redis
+    Svc -->|retrieve_candidates| Vector
+    EvalHarness -.->|reuses RetrievalService / ContextAssembler| Svc

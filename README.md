@@ -6,6 +6,59 @@
 
 Rather than relying on autonomous agent loops, the system combines explicit state-machine orchestration with bounded AI reasoning to ensure every clinical note follows a deterministic execution path from ingestion through physician approval. The repository emphasizes architectural correctness, clear data ownership, reproducible execution, and evaluation-driven development over infrastructure scale.
 
+> **New here?** `docs/demo.md` is a guided, ~10-minute walkthrough of this exact repository — start there for a live-demo tour instead of reading top to bottom.
+
+---
+
+# System Architecture
+
+Every request flows through one deterministic path, top to bottom. Upstash Vector, Upstash Redis, and CrewAI are the only components that hold non-deterministic or externally-hosted state, and each is reached exclusively through an application service — never directly from the graph or the frontend.
+
+```mermaid
+flowchart TD
+    FE["React 19 + Vite Frontend<br/>clinical-submission · review-queue<br/>decision-detail · workflow-visibility"]
+
+    subgraph API["FastAPI — aegis.api"]
+        Routers["Routers: clinical · review · workflow · demo"]
+    end
+
+    subgraph Orchestration["LangGraph — aegis.graphs"]
+        Graph["AegisWorkflowState state machine<br/>(workflow.py, one conditional edge:<br/>cache hit/miss)"]
+    end
+
+    Checkpoint[("graph_checkpoints.db<br/>AsyncSqliteSaver")]
+
+    subgraph AppServices["Application Services — aegis.services"]
+        Svc["ClinicalNoteService · NormalizationService · CacheService<br/>RetrievalService · ContextAssembler · ClinicalReasoningService<br/>ClinicalDecisionService · PersistenceService"]
+    end
+
+    CrewAI["CrewAI reasoning agent<br/>infrastructure/crewai (crewai.LLM -> Groq)"]
+
+    subgraph Repos["Repositories & Infrastructure Adapters<br/>aegis.database.repositories / aegis.infrastructure"]
+        RepoLayer["clinical_note_repository · clinical_decision_repository<br/>icd_repository · review_repository · content_store"]
+    end
+
+    SQLite[("SQLite<br/>clinical_registry.db<br/>system of record")]
+    Redis[("Upstash Redis<br/>SHA-256 exact-match cache")]
+    Vector[("Upstash Vector<br/>taxonomy_lookup, read-only")]
+
+    EvalHarness["Evaluation Framework<br/>aegis.evaluation / aegis-eval CLI<br/>(offline, no LangGraph)"]
+
+    FE -->|HTTP / JSON| Routers
+    Routers -->|invoke / resume Command| Graph
+    Graph -->|workflow state, artifacts| Routers
+    Graph -->|checkpointed via| Checkpoint
+    Graph -->|calls, injected at composition root| Svc
+    Svc -->|generate_recommendation| CrewAI
+    Svc -->|persist_clinical_decision| RepoLayer
+    RepoLayer --> SQLite
+    Svc -->|cache_lookup / cache_store| Redis
+    Svc -->|retrieve_candidates| Vector
+    EvalHarness -.->|reuses RetrievalService / ContextAssembler| Svc
+```
+
+*Source: [`system_architecture.mmd`](system_architecture.mmd). Application services are the only layer LangGraph calls directly; services are the only layer that talks to CrewAI, repositories, Redis, or Vector — the graph itself has no infrastructure imports.*
+
 ---
 
 # Architectural Overview
@@ -48,18 +101,75 @@ Redis provides an exact-match cache keyed by the SHA-256 hash of normalized clin
 
 ---
 
+# Retrieval: Offline Compilation vs. Runtime Inference
+
+The ICD-11 vector index and a per-request retrieval call are two independent processes that never run in the same code path — deliberately, so that reindexing the taxonomy can never block or slow down a live clinical request.
+
+**Offline — runs only when the ICD-11 taxonomy changes:**
+
+```mermaid
+flowchart LR
+    Dataset["ICD-11 dataset<br/>data/icd11.csv"]
+    Seed[("SQLite<br/>ICD-11 taxonomy table<br/>via aegis-db seed --icd")]
+    Builder["RepresentationBuilder<br/>Title / Hierarchy / Prose variants"]
+    Embedder["EmbeddingProvider<br/>BGE-large default, OpenAI swappable"]
+    Uploader["VectorUploader<br/>resumable via upload_checkpoint.json"]
+    Vector[("Upstash Vector<br/>taxonomy_lookup namespace")]
+
+    Dataset --> Seed --> Builder --> Embedder --> Uploader --> Vector
+```
+
+**Runtime — runs on every cache-miss request:**
+
+```mermaid
+flowchart LR
+    Note["Normalized Clinical Note<br/>(post cache-miss)"]
+    Embed["EmbeddingProvider.embed_query<br/>same provider as offline compilation"]
+    Search["Upstash Vector similarity search"]
+    Candidates["Retrieved ICD-11 candidates<br/>(similarity_score only)"]
+    Context["ContextAssembler<br/>-> single ReasoningContext"]
+
+    Note --> Embed --> Search --> Candidates --> Context
+```
+
+*Sources: [`offline_indexing_pipeline.mmd`](offline_indexing_pipeline.mmd), [`runtime_retrieval_pipeline.mmd`](runtime_retrieval_pipeline.mmd). Both stages share one `EmbeddingProvider` abstraction so the two embedding spaces are always compatible — but the runtime path only ever queries the index; it never writes to it. There is no vector write-back of clinical notes in v1 (see `docs/tradeoffs_and_limitations.md`).*
+
+---
+
 # Clinical Processing Pipeline
 
-Every clinical note progresses through a deterministic execution pipeline:
+Every clinical note progresses through a deterministic execution pipeline. This is the actual LangGraph state machine (`src/aegis/graphs/workflow.py`) — the only conditional edge is the cache hit/miss route; everything else is a fixed sequence of application-service calls:
+
+```mermaid
+flowchart TD
+    Start([START])
+    End([END])
+
+    A[create_clinical_note<br/>ClinicalNoteService]
+    B[normalize_note<br/>NormalizationService]
+    C[cache_lookup<br/>CacheService]
+    D{cache hit?<br/>_route_after_cache_lookup}
+    E[retrieve_candidates<br/>RetrievalService]
+    F[assemble_context<br/>ContextAssembler]
+    G[generate_recommendation<br/>ClinicalReasoningService / CrewAI]
+    H[human_review_pending<br/>interrupt/resume]
+    I[decide_case<br/>ClinicalDecisionService]
+    J[persist_clinical_decision<br/>PersistenceService / SQLite]
+    K[cache_store<br/>CacheService / Redis]
+
+    Start --> A --> B --> C --> D
+    D -->|hit: reuse ClinicalDecision| End
+    D -->|miss| E --> F --> G --> H --> I --> J --> K --> End
+```
+
+*Source: [`workflow_state_machine.mmd`](workflow_state_machine.mmd), kept in lockstep with `workflow.py` — see `docs/orchestration.md` for what each node does and does not own.*
 
 1. PHI anonymization and normalization.
 2. Deterministic Redis cache lookup using the normalized note hash.
 3. Semantic retrieval of candidate ICD-11 codes from Upstash Vector upon cache miss.
-4. Bounded AI-assisted reasoning through a single CrewAI clinical reasoning agent.
-5. Structured validation via Pydantic schemas.
-6. Human-in-the-Loop physician approval.
-7. Transactional persistence into SQLite.
-8. Deterministic Redis cache update for future identical requests.
+4. Bounded AI-assisted reasoning through a single CrewAI clinical reasoning agent, with all output validated by Pydantic schemas before it can reach persistence.
+5. Human-in-the-Loop physician approval — the workflow suspends at `human_review_pending` until a decision is submitted.
+6. Transactional persistence into SQLite, followed by a Redis cache update — in that order, so only durably persisted clinical truth ever becomes reusable cached knowledge.
 
 This architecture intentionally combines deterministic state transitions with bounded AI reasoning, ensuring that probabilistic model outputs never directly control workflow execution.
 
@@ -124,6 +234,8 @@ Every run writes reproducible, provenance-stamped reports (git commit, dataset h
 ---
 
 # Running the Demo (Real Retrieval, Minimal Credentials)
+
+> For a guided, narrated walkthrough of everything below (plus the frontend and the evaluation CLI), see `docs/demo.md`.
 
 A complete, reproducible run of the clinical pipeline — submission, AI-assisted recommendation, physician review, and persisted decision — is available as a single command:
 

@@ -7,52 +7,31 @@
 
 ## Current flow
 
-```text
-                 New Clinical Note (ClinicalNoteSubmission)
-                         │
-                         ▼
-                 Anonymize + Normalize        (NormalizationService)
-                         │
-                         ▼
-                 SHA-256 hash of normalized note
-                         │
-                         ▼
-                 Redis exact-match cache lookup (CacheService)
-                  ┌───────────────┐
-                  │               │
-             Cache Hit        Cache Miss
-                  │               │
-                  ▼               ▼
-      Reuse approved      Generate embedding        (RetrievalService)
-      ClinicalDecision            │
-      → END                       ▼
-                          Upstash Vector: taxonomy_lookup
-                                  │
-                                  ▼
-                          Candidate ICD-11 concepts
-                                  │
-                                  ▼
-                          Assemble ReasoningContext   (ContextAssembler)
-                                  │
-                                  ▼
-                          CrewAI clinical reasoning    (ClinicalReasoningService)
-                          → CodingRecommendation (Pydantic-validated)
-                                  │
-                                  ▼
-                          Physician review             (LangGraph interrupt/resume)
-                                  │
-                                  ▼
-                          ClinicalDecision             (ClinicalDecisionService)
-                                  │
-                                  ▼
-                          SQLite persist               (PersistenceService)
-                                  │
-                                  ▼
-                          Redis cache write-back (approved codes only)
-                                  │
-                                  ▼
-                                 END
+```mermaid
+flowchart TD
+    Note["New Clinical Note<br/>ClinicalNoteSubmission"]
+    Norm["Anonymize + Normalize<br/>NormalizationService"]
+    Hash["SHA-256 hash of normalized note"]
+    Cache{"Redis exact-match cache lookup<br/>CacheService"}
+    Reuse["Reuse approved ClinicalDecision<br/>→ END"]
+    Embed["Generate embedding<br/>RetrievalService"]
+    Vector["Upstash Vector: taxonomy_lookup"]
+    Candidates["Candidate ICD-11 concepts"]
+    Context["Assemble ReasoningContext<br/>ContextAssembler"]
+    Reason["CrewAI clinical reasoning<br/>ClinicalReasoningService<br/>→ CodingRecommendation (Pydantic-validated)"]
+    Review["Physician review<br/>LangGraph interrupt/resume"]
+    Decision["ClinicalDecision<br/>ClinicalDecisionService"]
+    Persist["SQLite persist<br/>PersistenceService"]
+    WriteBack["Redis cache write-back<br/>(approved codes only)"]
+    End([END])
+
+    Note --> Norm --> Hash --> Cache
+    Cache -->|hit| Reuse
+    Cache -->|miss| Embed --> Vector --> Candidates --> Context --> Reason --> Review --> Decision --> Persist --> WriteBack --> End
 ```
+
+*Source: `../workflow_state_machine.mmd` / `../runtime_retrieval_pipeline.mmd` capture the same
+flow at the service-name level and are the versions embedded in the README.*
 
 ## Phase notes (as built)
 

@@ -18,8 +18,11 @@ the current system. They fall into two groups:
 - **`conceptual_execution_map.mmd`**, **`data_transformation.mmd`**, **`state_machine.mmd`**
   — depict an earlier LoadPatient → ExtractSymptoms → … → MatchTrials pipeline with an
   "Approved?" branch. None of that was built. The current diagrams live at the repo root:
-  `workflow_state_machine.mmd` and `data_transformation.mmd`. Clinical trial matching is a
-  **Future v2** capability.
+  `system_architecture.mmd`, `workflow_state_machine.mmd`, `data_transformation.mmd`,
+  `offline_indexing_pipeline.mmd`, and `runtime_retrieval_pipeline.mmd` — all embedded and
+  rendered in `README.md` and cross-referenced from `docs/architecture.md`,
+  `docs/orchestration.md`, and `docs/clinical_note_ingestion_flow.md`. Clinical trial
+  matching is a **Future v2** capability.
 
 ## Frontend mockups
 
