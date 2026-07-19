@@ -66,7 +66,7 @@ def make_recommendation(
         reasoning_summary="Best-supported candidate(s) selected.",
         evidence_reference=EvidenceReference(candidate_icd_codes=icd_codes),
         metadata=ReasoningMetadata(
-            model_name="qwen/qwen3-32b",
+            model_name="llama-3.3-70b-versatile",
             prompt_version="1.0",
             temperature=0.0,
             generated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),

@@ -25,7 +25,7 @@ class TestLoadEvaluationConfig:
                     "dataset_path": "evals/clinical_cases.jsonl",
                     "output_dir": ".artifacts/evaluations",
                     "retrieval": {"mode": "production", "top_k_values": [1, 5]},
-                    "reasoning": {"reasoning_model": "qwen/qwen3-32b"},
+                    "reasoning": {"reasoning_model": "llama-3.3-70b-versatile"},
                     "rate_limit": {"requests_per_minute": 10},
                 }
             )
@@ -35,7 +35,7 @@ class TestLoadEvaluationConfig:
 
         assert config.retrieval.mode == "production"
         assert config.retrieval.top_k_values == [1, 5]
-        assert config.reasoning.reasoning_model == "qwen/qwen3-32b"
+        assert config.reasoning.reasoning_model == "llama-3.3-70b-versatile"
         assert config.rate_limit.requests_per_minute == 10
 
     def test_rejects_unknown_top_level_keys(self, tmp_path):

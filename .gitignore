@@ -5,8 +5,7 @@
 !.env.example
 
 # My own project journal
-.memory/
-CLAUDE.md
+.memory/ 
 
 .venv/
 __pycache__/

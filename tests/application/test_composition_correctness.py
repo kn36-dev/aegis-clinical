@@ -79,9 +79,9 @@ class TestServiceConstruction:
     def test_reasoning_model_name_is_threaded_through(
         self, clinical_db_connection: sqlite3.Connection
     ) -> None:
-        container = _build(clinical_db_connection, reasoning_model_name="qwen/qwen3-32b")
+        container = _build(clinical_db_connection, reasoning_model_name="llama-3.3-70b-versatile")
 
-        assert container.clinical_reasoning_service.model_name == "qwen/qwen3-32b"  # noqa: SLF001
+        assert container.clinical_reasoning_service.model_name == "llama-3.3-70b-versatile"  # noqa: SLF001
 
     def test_defaults_to_the_real_presidio_anonymizer_when_none_is_supplied(
         self, clinical_db_connection: sqlite3.Connection

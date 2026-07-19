@@ -107,7 +107,7 @@ def service(
 ) -> DefaultClinicalReasoningService:
     return DefaultClinicalReasoningService(
         reasoning_provider=provider,
-        model_name="qwen/qwen3-32b",
+        model_name="llama-3.3-70b-versatile",
         identifier_generator=identifier_generator,
         clock=clock,
     )
@@ -167,7 +167,7 @@ class TestSuccessfulReasoning:
     ):
         recommendation = await service.reason(make_context())
 
-        assert recommendation.metadata.model_name == "qwen/qwen3-32b"
+        assert recommendation.metadata.model_name == "llama-3.3-70b-versatile"
         assert recommendation.metadata.prompt_version
         assert recommendation.metadata.generated_at == clock.now()
 
@@ -199,7 +199,7 @@ class TestInvalidProviderOutput:
         provider = FakeReasoningProvider(responses=[{"not_a_recognized_shape": True}])
         service = DefaultClinicalReasoningService(
             reasoning_provider=provider,
-            model_name="qwen/qwen3-32b",
+            model_name="llama-3.3-70b-versatile",
             policy=ReasoningPolicy(max_attempts=2),
             identifier_generator=identifier_generator,
             clock=clock,
@@ -216,7 +216,7 @@ class TestInvalidProviderOutput:
         provider = FakeReasoningProvider(responses=[_valid_response(icd_code="9Z99")])
         service = DefaultClinicalReasoningService(
             reasoning_provider=provider,
-            model_name="qwen/qwen3-32b",
+            model_name="llama-3.3-70b-versatile",
             policy=ReasoningPolicy(max_attempts=1),
             identifier_generator=identifier_generator,
             clock=clock,
@@ -233,7 +233,7 @@ class TestInvalidProviderOutput:
         )
         service = DefaultClinicalReasoningService(
             reasoning_provider=provider,
-            model_name="qwen/qwen3-32b",
+            model_name="llama-3.3-70b-versatile",
             policy=ReasoningPolicy(max_attempts=2),
             identifier_generator=identifier_generator,
             clock=clock,
@@ -253,7 +253,7 @@ class TestProviderReplacement:
 
         service = DefaultClinicalReasoningService(
             reasoning_provider=AlwaysEmptyReasoningProvider(),
-            model_name="qwen/qwen3-32b",
+            model_name="llama-3.3-70b-versatile",
         )
 
         recommendation = await service.reason(make_context())

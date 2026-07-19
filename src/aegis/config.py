@@ -37,7 +37,7 @@ class AppSettings(BaseSettings):
     AEGIS_PROFILE: Literal["production", "demo", "integration"] = Field(default="production")
 
     LLM_PROVIDER: str = Field(default="groq")
-    LLM_MODEL: str = Field(default="qwen/qwen3-32b")
+    LLM_MODEL: str = Field(default="llama-3.3-70b-versatile")
     # Required only when AEGIS_PROFILE == "production" -- checked below.
     GROQ_API_KEY: SecretStr | None = Field(default=None)
     REASONING_TEMPERATURE: float = Field(default=0.0, ge=0.0)

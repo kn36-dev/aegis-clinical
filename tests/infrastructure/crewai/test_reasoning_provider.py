@@ -22,10 +22,12 @@ def _make_context() -> ReasoningContext:
 @patch(f"{MODULE}.build_clinical_reasoning_crew")
 @patch(f"{MODULE}.LLM")
 def test_constructor_builds_llm_from_provider_and_model(mock_llm_cls, mock_build_crew):
-    CrewAIReasoningProvider(provider="groq", model="qwen/qwen3-32b", api_key="key", temperature=0.2)
+    CrewAIReasoningProvider(
+        provider="groq", model="llama-3.3-70b-versatile", api_key="key", temperature=0.2
+    )
 
     mock_llm_cls.assert_called_once_with(
-        model="groq/qwen/qwen3-32b", api_key="key", temperature=0.2
+        model="groq/llama-3.3-70b-versatile", api_key="key", temperature=0.2
     )
 
 
@@ -45,7 +47,9 @@ async def test_reason_builds_crew_with_llm_and_prompt_then_kicks_off(mock_llm_cl
             raw="",
         )
     )
-    provider = CrewAIReasoningProvider(provider="groq", model="qwen/qwen3-32b", api_key="key")
+    provider = CrewAIReasoningProvider(
+        provider="groq", model="llama-3.3-70b-versatile", api_key="key"
+    )
     context = _make_context()
 
     await provider.reason(context, "the rendered prompt")
@@ -66,7 +70,9 @@ async def test_reason_prefers_pydantic_output(mock_llm_cls, mock_build_crew):
             raw='{"recommendations": [], "reasoning_summary": "from raw"}',
         )
     )
-    provider = CrewAIReasoningProvider(provider="groq", model="qwen/qwen3-32b", api_key="key")
+    provider = CrewAIReasoningProvider(
+        provider="groq", model="llama-3.3-70b-versatile", api_key="key"
+    )
 
     result = await provider.reason(_make_context(), "prompt")
 
@@ -83,7 +89,9 @@ async def test_reason_falls_back_to_json_dict_when_no_pydantic(mock_llm_cls, moc
             raw='{"recommendations": [], "reasoning_summary": "from raw"}',
         )
     )
-    provider = CrewAIReasoningProvider(provider="groq", model="qwen/qwen3-32b", api_key="key")
+    provider = CrewAIReasoningProvider(
+        provider="groq", model="llama-3.3-70b-versatile", api_key="key"
+    )
 
     result = await provider.reason(_make_context(), "prompt")
 
@@ -100,7 +108,9 @@ async def test_reason_falls_back_to_parsing_raw_text_as_json(mock_llm_cls, mock_
             raw='{"recommendations": [], "reasoning_summary": "from raw"}',
         )
     )
-    provider = CrewAIReasoningProvider(provider="groq", model="qwen/qwen3-32b", api_key="key")
+    provider = CrewAIReasoningProvider(
+        provider="groq", model="llama-3.3-70b-versatile", api_key="key"
+    )
 
     result = await provider.reason(_make_context(), "prompt")
 
@@ -117,7 +127,9 @@ async def test_reason_raises_value_error_when_raw_is_not_valid_json(mock_llm_cls
             raw="not json at all",
         )
     )
-    provider = CrewAIReasoningProvider(provider="groq", model="qwen/qwen3-32b", api_key="key")
+    provider = CrewAIReasoningProvider(
+        provider="groq", model="llama-3.3-70b-versatile", api_key="key"
+    )
 
     with pytest.raises(ValueError, match="no structured output"):
         await provider.reason(_make_context(), "prompt")
@@ -135,7 +147,9 @@ async def test_reason_raises_value_error_when_raw_json_is_not_an_object(
             raw="[1, 2, 3]",
         )
     )
-    provider = CrewAIReasoningProvider(provider="groq", model="qwen/qwen3-32b", api_key="key")
+    provider = CrewAIReasoningProvider(
+        provider="groq", model="llama-3.3-70b-versatile", api_key="key"
+    )
 
     with pytest.raises(ValueError, match="non-object JSON"):
         await provider.reason(_make_context(), "prompt")
